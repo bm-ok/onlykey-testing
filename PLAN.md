@@ -11,8 +11,8 @@ Counts are as of 2026-08-04, both adapters green:
 | sanity | 37 passed, 0 failed | same - it needs no device |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed |
 | section 2 | 23 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
-| section 3 | 11 passed, 0 failed (headless tier) | untried |
-| **whole tree** | **139 passed** | **94 passed, 23 skipped-with-reason** |
+| section 3 | 12 passed, 0 failed (headless tier) | untried |
+| **whole tree** | **140 passed** | **94 passed, 23 skipped-with-reason** |
 
 Hardware counts are from before the PQC work; section 2 cannot run there at all,
 so the only thing waiting on a key is a re-run of sections 0 and 1 against
@@ -150,6 +150,7 @@ the second fails the page is at fault rather than the device.
 | `composite_sign` / `composite_decrypt` | pgp-pqc | `17-nodejs` | `17-nwjs` | ☐ | ☐ |
 | `startEncryption` / `startDecryption` (`onlykey-pgp.js`) | encrypt, decrypt | `18`'s `pgp_env` half | `18` | ☐ | ☐ |
 | age file format (`age_file.js`) | age-derive | - | - | ☐ | - |
+| vendored openpgp fork (`openpgp_loader.js`) | pgp-pqc | `17-nodejs`'s `openpgp_node` | - | ☐ | - |
 | composite blobs (`composite_pgp.js`) | pgp-pqc | `17-nodejs` | - | ☐ | - |
 | vault | vault | - | - | ☐ | ☐ |
 | chat | chat | - | - | - | ☐ |
@@ -170,11 +171,21 @@ Two things found while surveying, both already acted on:
   dispatch. A round-trip test could never have caught it, since a wrong encoder
   and its matching decoder agree perfectly. Fixed, and now checked against
   python's own output rather than against itself.
-- **`age_pqc.js` cannot be loaded in its own checkout.** It requires
-  `@noble/post-quantum`, `@noble/hashes` and `@noble/curves`, and
-  `onlykey-fido2/package.json` declares none of them - a browser build gets them
-  from a bundler. `webenv.loadPlain()` supplies them from this kit, which is why
-  the `@noble` versions here are load-bearing rather than incidental.
+- **`age_pqc.js` needs the web app's resolver, not just its files.** It requires
+  `@noble/*` by bare specifier and `onlykey-fido2/package.json` declares none of
+  them - because they are **vendored**, at `onlykey/vendor/@noble`, with
+  `webpack.config.js` aliasing the bare specifiers onto that directory ("the
+  only thing that lets those resolve without modifying the vendored files").
+  `openpgp` is vendored beside it and loaded by path through `raw-loader`.
+  `webenv.loadPlain()` replicates the alias, and it only partly survives: the
+  vendored packages are ESM, and `@noble/post-quantum` imports `@noble/hashes`
+  by bare specifier *internally*, which Node's ESM resolver has no alias for. So
+  `hashes` and `curves` load from the app's own vendor tree and `post-quantum`
+  falls back to the copy installed here - harmless only while the two are the
+  same build, which `01-age-pqc-parity` now asserts rather than assumes
+  (`post-quantum 0.6.1`, the rest `2.2.0`, on both sides today). Without that
+  assertion a future divergence would leave the parity tests passing while
+  checking this kit against itself.
 
 ## Tests carried over
 

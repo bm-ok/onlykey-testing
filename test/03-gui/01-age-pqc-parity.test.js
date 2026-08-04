@@ -40,6 +40,32 @@ describe('the web app\'s X-Wing maths', {
   const vector = () => JSON.parse(fs.readFileSync(VECTOR, 'utf8'));
   const b64 = (s) => Buffer.from(s, 'base64');
 
+  it('runs the same @noble build the web app ships', async ({ assert, log }) => {
+    /*
+     * This has to be checked, not assumed, and the reason is subtle enough to
+     * write down.
+     *
+     * The web app does not npm-install @noble - it VENDORS it, at
+     * onlykey/vendor/@noble, and webpack aliases the bare specifiers onto that
+     * directory. webenv.loadPlain() replicates the alias, but only partly
+     * survives: the vendored packages are ESM, and @noble/post-quantum imports
+     * @noble/hashes by bare specifier internally, which Node's ESM resolver has
+     * no alias for. So hashes and curves load from the app's own vendor tree
+     * and post-quantum falls back to the copy installed here.
+     *
+     * That fallback is only harmless while the two are the same build. If the
+     * app ever vendors a different @noble, every test below would keep passing
+     * while silently testing this kit against itself.
+     */
+    for (const { name, vendored, ours } of webenv.vendoredVersions()) {
+      log(`${name}: vendored ${vendored}, installed ${ours}`);
+      assert.ok(vendored, `${name} is not vendored in the web app`);
+      assert.equal(ours, vendored,
+        `${name} differs between the web app and this kit - the parity below ` +
+        'would be this kit checking itself');
+    }
+  });
+
   it('expands the device seed to the same ML-KEM key', async ({ assert }) => {
     const v = vector();
     const { publicKey } = theirs().mlkemKeypairFromSeed(b64(v.mlkem_seed));
