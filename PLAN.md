@@ -11,7 +11,8 @@ Counts are as of 2026-08-04, both adapters green:
 | sanity | 35 passed, 0 failed | same - it needs no device |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed |
 | section 2 | 23 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
-| **whole tree** | **126 passed** | **94 passed, 23 skipped-with-reason** |
+| section 3 | 6 passed, 0 failed (headless tier) | untried |
+| **whole tree** | **132 passed** | **94 passed, 23 skipped-with-reason** |
 
 Hardware counts are from before the PQC work; section 2 cannot run there at all,
 so the only thing waiting on a key is a re-run of sections 0 and 1 against
@@ -467,9 +468,15 @@ slot fields are worse — two of twenty-eight.
 
 ## Stage 6 — the sections that need a display
 
-- [ ] Section 3's headless tier first (`03-gui/00-09`): the web app's own
-      device library, shimmed onto `lib/device/ctap2.js`. No display, no USB —
-      see "Three kits, not two" above
+- [x] Section 3's headless tier is started (`03-gui/00-fido2-lib`, 6 tests):
+      `lib/webenv.js` supplies the browser surface and points
+      `navigator.credentials.get()` at `lib/device/ctap2.js`, and the real
+      library completes an OKCONNECT handshake over the in-process bus. Its
+      tunnel encoder is checked byte for byte against `lib/device/tunnel.js`,
+      and both are checked against the device
+- [ ] The rest of it: the PGP layer (`onlykey-pgp.js` - `startEncryption`,
+      `startDecryption`, the `_$mode` matrix), ECDH, and the derivations. See
+      the inventory above; the PGP layer is where the coverage actually is
 - [ ] Section 3's browser tier (`03-gui/10+`), the web app in nw.js
 - [ ] Section 4, the OnlyKey app — never driven from a harness at all
 - [ ] Services started and stopped by *visible* test files at the section
