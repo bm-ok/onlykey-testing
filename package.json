@@ -1,12 +1,21 @@
 {
   "name": "onlykey-testing",
   "version": "1.0.0",
-  "description": "",
+  "description": "Emulator-first test kit for OnlyKey firmware. Runs against the emulator in CI, against hardware on a workstation, from the same test files.",
   "license": "ISC",
   "author": "",
+  "private": true,
   "type": "commonjs",
-  "main": "index.js",
+  "main": "lib/runner.js",
+  "bin": {
+    "okt": "bin/okt.js"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node bin/okt.js run 01-protocol",
+    "test:one": "node bin/okt.js run",
+    "list": "node bin/okt.js list"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

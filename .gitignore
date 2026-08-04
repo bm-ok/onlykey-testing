@@ -1,2 +1,7 @@
 node_modules
 package-lock.json
+
+# Every run gets its own directory under here: its log, its status file, its
+# socket, its restart markers and the storage dir the device host boots from.
+# Post-mortem artefacts, not source.
+runs/
