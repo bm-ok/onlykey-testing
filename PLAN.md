@@ -10,12 +10,68 @@ Counts are as of 2026-08-04, both adapters green:
 |---|---|---|
 | sanity | 35 passed, 0 failed | same - it needs no device |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed |
-| section 2 | 12 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
-| **whole tree** | **115 passed** | **94 passed, 23 skipped-with-reason** |
+| section 2 | 18 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
+| **whole tree** | **121 passed** | **94 passed, 23 skipped-with-reason** |
 
 Hardware counts are from before the PQC work; section 2 cannot run there at all,
 so the only thing waiting on a key is a re-run of sections 0 and 1 against
 `libraries@83353cf`, which needs a Teensy rebuild and a reflash.
+
+## Three kits, not two
+
+`onlykey-alpha-testing` is not the first ancestor. `onlykey-fido2` is - and it
+is a **standalone library** that merely lives inside `onlykey.github.io/src/`
+(also published as `github.com/bmatusiak/node-onlykey-fido2`). It is what the
+web app talks to the device with, and its `test-api/` directory was the original
+protocol test kit: an architect-plugin runner (`config.js`, `test_list`,
+`test_onlykey`, `test_pgp`) with a `window_replacements` shim that supplies the
+browser surface so the library can run under Node. Most of its cases are
+commented out now and `pgp.js` is what still runs, but the shape of the idea
+survived into everything after it.
+
+| | kit | drives | transport |
+|---|---|---|---|
+| 1 | `onlykey-fido2/test-api` | the real library, through its own API | node-hid |
+| 2 | `onlykey-alpha-testing` | the real library **and** ported copies | node-hid |
+| 3 | this kit | ported copies | in-process, or node-hid |
+
+**`test-api` is not being adopted.** It is recorded here because knowing it
+exists explains where the later kits came from, and because it is a second
+reading of the protocol to check against - not because anything should be built
+on it.
+
+What is worth taking from it is the idea it and the old kit share: the library
+under `onlykey-fido2/onlykey/` is the client the web app actually uses, so
+running it beats reimplementing it. `test-api`'s `window_replacements` and the
+old kit's `lib/fido2/browser_env.js` both supply the small browser surface it
+needs, and the latter says why: *"a reimplementation in Node would be a second,
+divergent copy of the code under test, which is the thing this whole suite
+exists to avoid."*
+
+`lib/device/tunnel.js` is exactly such a copy - a port of `onlykey-api.js`'s
+`encode_ctaphid_request_as_keyhandle()`. That was the right call for stage 5,
+because it kept the tunnel in section 1. **An open question for the remaining
+FIDO2 rows** is whether to keep porting or to shim `navigator.credentials.get`
+onto this kit's own CTAP2 layer and run the real library. The old kit shimmed it
+onto `@vincss-public-projects/fido2-client` over hidapi, which is why everything
+built on it needed a kernel device node; pointing the same shim at
+`lib/device/ctap2.js` would not, and would keep those rows CI-able. Not decided.
+
+Two things to carry across whichever way that goes, both learned the expensive
+way:
+
+- `location.hostname` **must** be `onlyagent.app`. It is folded into the
+  derivation - `okcrypto_hkdf()` reads the RPID staged at `ctap_buffer+4` - and
+  the CLI pins the same value. `test-api`'s own shim hardcodes `apps.crp.to`, so
+  copying it verbatim derives a different key with no error at all, surfacing
+  much later as "no identity matched any of the recipients". `tunnel.js` already
+  pins the right one.
+- Resolve `node-hid` from this kit, not from `onlykey.github.io`, which pulls
+  2.2.0 and a bundled hidapi with a use-after-free that segfaults on teardown.
+
+`onlykey-3rd-party.js` and `onlykey-api.js` are also where `OKGETPUBKEY`'s
+option bytes are written down - the thing `10-fido2-xwing-derive` is blocked on.
+So that row is a reading job either way, not a reverse-engineering one.
 
 ## Tests carried over
 
@@ -36,7 +92,7 @@ a section that does not exist yet.
 | ⚠️ | `12-non-pqc-regression` — slot labels, classic ECC + RSA (TC-15) | protocol | `08-slot-keyboard` | labels and slot storage covered; classic ECC and RSA key handling is not |
 | ✅ | `01-pqc-keygen` — X-Wing keygen (TC-04) | cli | `01-pqc-keygen` | plus the readback the old kit never did, which is what found **two firmware bugs** (`libraries@83353cf`) that made every generated PQC key unusable |
 | ✅ | `02-pqc-slot` — PQC slot selection (TC-06) | cli | `02-pqc-slot` | and the reserved-slot case now proves the plugin refused on the ARGUMENT, by asserting the device primed no challenge |
-| ☐ | `03-pqc-decrypt` — X-Wing encrypt/decrypt (TC-05) | cli | — | drives `age` and `age-plugin-onlykey` |
+| ✅ | `03-pqc-decrypt` — X-Wing encrypt/decrypt (TC-05) | cli | `03-pqc-decrypt` | real `age`, encrypted on the host, decrypted on the device, byte for byte — and the end-to-end proof that `libraries@83353cf` fixed something real, since both bugs surfaced here as "no identity matched any of the recipients" |
 | ☐ | `04-pqc-no-device` — decrypt with no device (TC-07) | cli | — | two-phase: generate an identity WITH a device, then prove `age -d` fails cleanly without one. The old kit needed a hand on the cable and mostly skipped; the gadget can unplug itself, so this finally runs unattended — see the `bus-detach` capability |
 | ✅ | `05-age-pqc-derived` — split custody, JS math | sanity | `04-age-pqc-derived` | **no binaries, no device, no node-hid.** Six tests in 80ms, including the fixed vector from python-onlykey's own `derived_xwing.py`, so this is cross-language agreement and not self-consistency. The three `@noble` packages are optional dependencies behind the `xwing-math` capability |
 | ⚠️ | `10-fido2-xwing-derive` — X-Wing derive over FIDO2 (TC-09/10) | protocol | `12-webauthn-tunnel` | the tunnel it rides on is built and proven on both adapters; the X-Wing derive command itself still needs its option bytes worked out |
@@ -75,11 +131,11 @@ What that leaves is lopsided, and worth knowing before picking anything up:
 |---|---|---|
 | sanity | 0 | done |
 | protocol | 1 (partial) | nothing - `10`'s transport is done; the derive command is not |
-| cli | 6 | nothing - the section runs; these are now just tests to write |
+| cli | 5 | nothing - the section runs; these are now just tests to write |
 | gui | 4 | stage 6, and a display |
 
 So "get all the tests over" is mostly a CLI problem, not a protocol one. Stage 3
-is done and the section runs; the six rows left there are tests to write rather
+is done and the section runs; the five rows left there are tests to write rather
 than anything to unblock.
 
 ### New tests that replaced nothing
@@ -277,8 +333,12 @@ consequence.
       off the LEDs, and the press timed on the device's own "Encrypted Buffer"
       rather than a blind margin. **Both found firmware bugs** - see the
       `wrote === 1` assertion, which is a regression test for one of them
-- [ ] The rest of the CLI rows: `03-pqc-decrypt`, `04-pqc-no-device`,
-      lib-agent SSH and GPG
+- [x] `03-pqc-decrypt`, on `lib/pqc.js`'s decapsulation half: no config mode,
+      digits hashed from the CIPHERTEXT rather than a fixed trigger, and the
+      device's own print as the press signal - which here is the ONLY signal,
+      because `age` runs the plugin as its own child and does not relay its
+      stderr
+- [ ] The rest of the CLI rows: `04-pqc-no-device`, lib-agent SSH and GPG
 - [ ] Then start section 2 against the emulator: `onlykey-cli` through the
       venv, driven by visible start/stop test files rather than hooks. The CLI
       exposes **36 subcommands** - that list is the section-2 checklist
