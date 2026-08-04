@@ -1,26 +1,105 @@
 /*
- * Section 2: the CLI, through the Python venv.
+ * Section 2: onlykey-cli, against a device the kit itself is holding up.
  *
- * Declared, not written. The structure is fixed now so that later work has
- * somewhere to go and so that a run says what it is NOT covering, but the
- * emulator comes first and this section follows once the runner has proven
- * itself.
+ * This is the first test in the kit that does NOT speak the protocol. Section 1
+ * reimplements the client protocol in JS and checks the firmware against it;
+ * this runs the actual client and checks that IT works. The point of having
+ * both is that they can disagree - a section-1 pass with a section-2 failure
+ * means the firmware is right and python-onlykey is not, which is a sentence
+ * neither section can say alone.
  *
- * This section is not merely deferred on a hosted runner - it is permanently
- * impossible there. python-onlykey finds the device through hidapi, like every
- * other real client, and a GitHub runner has no /dev/hidraw for hidapi to open.
- * The `kernel-hid` capability is how that gets said out loud, once, with a
- * reason, instead of the section quietly appearing to pass.
+ * Why the two can share one device: with the USB gadget up, the kit's device
+ * host holds /dev/hidg* (the device end of the link) and python-onlykey opens
+ * /dev/hidraw* (the host end). Opposite ends, no contention - so section 2
+ * keeps the fixture isolation section 1 has, instead of being pointed at
+ * whatever long-running daemon happens to be about.
  *
- * Everything here belongs to a self-hosted runner or a workstation with the
- * gadget bridge up (see the emulator's scripts/gadget-setup.sh).
+ * `requires: kernel-hid` is what gates all of it. On a hosted runner there is
+ * no /dev/hidraw at all and this can never run; on a workstation it runs only
+ * when the gadget is free and unambiguous - see lib/gadget.js, which refuses
+ * when a physical key is attached alongside, because python-onlykey takes the
+ * first match and cannot tell them apart.
  */
 'use strict';
 
 const { describe, it } = require('../../lib/harness');
+const { PINS } = require('../../lib/config');
+const cli = require('../../lib/cli');
 
-describe('CLI (section 2)', { requires: ['kernel-hid'] }, () => {
-  it('runs onlykey-cli against the device', async ({ skip }) => {
-    skip('not written yet - section 2 follows once the runner has proven itself');
+describe('onlykey-cli',
+  { state: 'initialized', requires: ['crypto', 'kernel-hid'], timeoutMs: 120000 }, () => {
+    it('has the venv it needs', async ({ assert, skip }) => {
+      if (!cli.venvPresent()) skip(`no venv at ${cli.VENV_BIN}`);
+      assert.ok(cli.binary('onlykey-cli'), 'onlykey-cli is missing from the venv');
+      assert.ok(cli.binary('python3'), 'the venv has no python3');
+    });
+
+    it('sees exactly one OnlyKey on the bus', async ({ assert, signal }) => {
+      /*
+       * The precondition every later test rests on. python-onlykey enumerates
+       * and takes the first match, so if it can see two devices, nothing below
+       * says anything about WHICH one answered.
+       */
+      const result = await cli.run('python3', ['-c', [
+        'import hid, json',
+        'ds = [d for d in hid.enumerate(0, 0)',
+        '      if d["vendor_id"] == 0x1d50 and d["product_id"] == 0x60fc]',
+        'print(json.dumps(sorted({d["path"].decode().split(":")[0] for d in ds})))',
+      ].join('\n')], { timeoutMs: 20000, signal });
+
+      assert.equal(result.code, 0, `enumeration failed: ${result.stderr}`);
+      const buses = JSON.parse(result.stdout.trim() || '[]');
+      assert.equal(buses.length, 1,
+        `expected one OnlyKey, hidapi sees ${buses.length}: ${JSON.stringify(buses)}`);
+    });
+
+    it('reads the device state through python-onlykey', async ({ assert, signal }) => {
+      /*
+       * Deliberately not `onlykey-cli` the executable: its module-import-time
+       * OnlyKey() construction has a known enumeration race (the old kit hit
+       * `AttributeError: 'OnlyKey' object has no attribute '_hid'` and spent
+       * real time treating it as a device fault). Construct the client
+       * directly, the way the old kit's check_status.py ended up doing.
+       *
+       * A locked device answers nothing to set_time - the "INITIALIZED" string
+       * is a separate 1 Hz broadcast - so the read window has to be wider than
+       * that interval or it lands in the gap and reports nothing.
+       */
+      const result = await cli.run('python3', ['-c', [
+        'import time',
+        'from onlykey.client import OnlyKey',
+        'ok = OnlyKey()',
+        'ok.set_time(time.time())',
+        'print(ok.read_string(timeout_ms=2500))',
+        'ok.close()',
+      ].join('\n')], { timeoutMs: 30000, signal });
+
+      assert.equal(result.code, 0, `python-onlykey failed: ${result.stderr}`);
+      assert.match(result.stdout, /INITIALIZED|UNLOCKED/,
+        `unexpected device state: ${JSON.stringify(result.stdout)}`);
+    });
+
+    it('agrees with section 1 about the firmware version',
+      async ({ device, assert, signal }) => {
+        /*
+         * The cross-check that justifies running a second client at all. The
+         * kit unlocked the device over its own in-process bus; python-onlykey
+         * asks the same device over USB and has to get the same answer. Two
+         * clients, two transports, one firmware.
+         */
+        const model = await device.unlock(PINS.primary, { signal });
+
+        const result = await cli.run('python3', ['-c', [
+          'import time',
+          'from onlykey.client import OnlyKey',
+          'ok = OnlyKey()',
+          'ok.set_time(time.time())',
+          'print(ok.read_string(timeout_ms=2500))',
+          'ok.close()',
+        ].join('\n')], { timeoutMs: 30000, signal });
+
+        assert.equal(result.code, 0, result.stderr);
+        assert.includes(result.stdout.trim(), model.replace(/\0/g, '').trim(),
+          'the CLI and the kit disagree about what the device just said');
+      });
   });
-});

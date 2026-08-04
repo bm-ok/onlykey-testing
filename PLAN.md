@@ -231,12 +231,24 @@ consequence.
       reason**: the gadget is bound but owned by the pm2 daemon's pid, and
       driving it would provision PINs inside the developer's own device.
       `OKT_USE_RUNNING_GADGET=yes` opts in deliberately
-- [ ] **The ownership decision.** The gadget is a singleton, so section 2 cannot
-      have section 1's per-file isolation unless the kit owns it. Options: drive
-      whatever is there (no isolation, fights the GUI), or teach the kit's own
-      device host to raise the gadget bridge when it is free (isolation kept,
-      needs the daemon stopped). The second one is the one worth building
-- [ ] Then start section 2 against the emulator
+- [x] **The ownership decision, settled: the kit raises the gadget itself.**
+      `device-host.js --gadget` starts the emulator's bridge, and a file whose
+      metadata requires `kernel-hid` gets one. The isolation survives because
+      the two ends are different nodes - the kit's host holds `/dev/hidg*`
+      (device side) and the CLI opens `/dev/hidraw*` (host side), so they are
+      not competing for the same descriptors
+- [x] Refuse rather than race: the transport checks the bus is free **before**
+      spawning anything, and names the owning pid
+- [x] One device at a time, enforced. A gadget and a physical key on the same
+      bus are indistinguishable to any client, and a WebAuthn ceremony would
+      race both, so that combination is refused with that as the reason
+- [x] `lib/cli.js` and a real `02-cli/00-venv.test.js`: enumeration is exactly
+      one device, the state reads back through python-onlykey, and the CLI and
+      section 1 must agree about the firmware version
+- [ ] **Unverified live** - it has only ever been seen to skip, because this
+      machine has both the daemon and a key attached. Needs one run with the
+      key unplugged and the daemon stopped
+- [ ] Then the rest of the CLI rows: the PQC cluster, lib-agent SSH and GPG
 - [ ] Then start section 2 against the emulator: `onlykey-cli` through the
       venv, driven by visible start/stop test files rather than hooks. The CLI
       exposes **36 subcommands** - that list is the section-2 checklist
