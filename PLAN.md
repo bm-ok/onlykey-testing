@@ -37,10 +37,10 @@ survived into everything after it.
 
 ### The library is a client to test, not a kit to adopt
 
-**`test-api` is old and deprecated, and is not being adopted** - said plainly
-here because a directory called `test-api` sitting next to the library will
-otherwise look like something to build on. It is recorded only because it
-explains where the later kits came from.
+**`test-api` is old and deprecated. Do not use it, do not update it** - said
+plainly because a directory called `test-api` sitting next to the library will
+otherwise look like something to build on. What it is good for is clues about
+what was being tested, and that is worked through at the end of this section.
 
 The library itself is a different matter. **`onlykey-fido2` is a client this kit
 should TEST**, and the third one: the kit's own JS is one, python-onlykey is the
@@ -90,16 +90,41 @@ shipped library on the other, one firmware underneath. Same shape as
 `00-venv.test.js` asserting that the CLI and the kit agree about what the device
 just said.
 
-Two things to carry across when that happens, both learned the expensive way:
+Two things to get right when that happens:
 
 - `location.hostname` **must** be `onlyagent.app`. It is folded into the
   derivation - `okcrypto_hkdf()` reads the RPID staged at `ctap_buffer+4` - and
-  the CLI pins the same value. `test-api`'s own shim hardcodes `apps.crp.to`, so
-  copying it verbatim derives a different key with no error at all, surfacing
-  much later as "no identity matched any of the recipients". `tunnel.js` already
-  pins the right one.
+  the CLI pins the same value; the wrong one derives a different key with no
+  error at all, surfacing much later as "no identity matched any of the
+  recipients". `tunnel.js` already pins the right one. `test-api` says
+  `apps.crp.to` because it stopped being maintained while that was still the
+  domain - which is the general rule for reading it, below.
 - Resolve `node-hid` from this kit, not from `onlykey.github.io`, which pulls
   2.2.0 and a bundled hidapi with a use-after-free that segfaults on teardown.
+
+### What `test-api` is good for: the inventory, not the values
+
+Read for **what it covered**, never for what it says is true. It froze where it
+froze, so its constants are history rather than fact - the RPID above is the
+example, and there will be others.
+
+What it was exercising, which is the closest thing to a coverage list for the
+web app's client that exists:
+
+| | through | covered here? |
+|---|---|---|
+| `onlykeyApi.api.connect()` / `.check()` | the library | equivalent covered by `12-webauthn-tunnel` |
+| `onlykeyApi.pgp().api()` — `startEncryption` / `startDecryption` | `onlykey-pgp.js` | **no** |
+| its `_$mode()` matrix — Encrypt Only, Sign Only, Encrypt and Sign, Decrypt Only, Decrypt and Verify | `onlykey-pgp.js` | **no** |
+| ECDH (`ecdh.js`, referenced from `index.js`, file no longer present) | the library | **no** |
+| kbpgp's own API, with no OnlyKey involvement | `test_pgp/` | the same idea as this kit's sanity section |
+
+Two details worth keeping from it. Its `test_pgp` control - prove the PGP library
+works on its own before blaming the device - is exactly the sanity section's
+argument, arrived at independently. And `particle_send.sh` pressed the device's
+button with an **IoT relay**, driven off a `"You have 8 seconds to enter
+challenge code"` status event: the same 3-button confirmation `lib/pqc.js` now
+answers in software, once solved with hardware.
 
 `onlykey-3rd-party.js` and `onlykey-api.js` are also where `OKGETPUBKEY`'s
 option bytes are written down - the thing `10-fido2-xwing-derive` is blocked on.
