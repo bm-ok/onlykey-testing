@@ -10,8 +10,8 @@ Counts are as of 2026-08-04, both adapters green:
 |---|---|---|
 | sanity | 35 passed, 0 failed | same - it needs no device |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed |
-| section 2 | 18 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
-| **whole tree** | **121 passed** | **94 passed, 23 skipped-with-reason** |
+| section 2 | 23 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
+| **whole tree** | **126 passed** | **94 passed, 23 skipped-with-reason** |
 
 Hardware counts are from before the PQC work; section 2 cannot run there at all,
 so the only thing waiting on a key is a re-run of sections 0 and 1 against
@@ -35,30 +35,62 @@ survived into everything after it.
 | 2 | `onlykey-alpha-testing` | the real library **and** ported copies | node-hid |
 | 3 | this kit | ported copies | in-process, or node-hid |
 
-**`test-api` is not being adopted.** It is recorded here because knowing it
-exists explains where the later kits came from, and because it is a second
-reading of the protocol to check against - not because anything should be built
-on it.
+### The library is a client to test, not a kit to adopt
 
-What is worth taking from it is the idea it and the old kit share: the library
-under `onlykey-fido2/onlykey/` is the client the web app actually uses, so
-running it beats reimplementing it. `test-api`'s `window_replacements` and the
-old kit's `lib/fido2/browser_env.js` both supply the small browser surface it
-needs, and the latter says why: *"a reimplementation in Node would be a second,
-divergent copy of the code under test, which is the thing this whole suite
-exists to avoid."*
+**`test-api` is old and deprecated, and is not being adopted** - said plainly
+here because a directory called `test-api` sitting next to the library will
+otherwise look like something to build on. It is recorded only because it
+explains where the later kits came from.
 
-`lib/device/tunnel.js` is exactly such a copy - a port of `onlykey-api.js`'s
-`encode_ctaphid_request_as_keyhandle()`. That was the right call for stage 5,
-because it kept the tunnel in section 1. **An open question for the remaining
-FIDO2 rows** is whether to keep porting or to shim `navigator.credentials.get`
-onto this kit's own CTAP2 layer and run the real library. The old kit shimmed it
-onto `@vincss-public-projects/fido2-client` over hidapi, which is why everything
-built on it needed a kernel device node; pointing the same shim at
-`lib/device/ctap2.js` would not, and would keep those rows CI-able. Not decided.
+The library itself is a different matter. **`onlykey-fido2` is a client this kit
+should TEST**, and the third one: the kit's own JS is one, python-onlykey is the
+second, and this is what `onlykey.github.io` ships and therefore what every
+browser user actually runs. Section 2 exists on exactly this argument - "the
+point of having both is that they can disagree" - and nothing about that
+argument is special to python. A firmware change that breaks the web app's
+client is currently invisible to every test that exists.
 
-Two things to carry across whichever way that goes, both learned the expensive
-way:
+It is testable from here without a browser, and both ancestors show how: supply
+the small browser surface the library touches - `crypto.subtle`, `atob`/`btoa`,
+`location.hostname`, `navigator.credentials.get` - and then call it the way the
+app does. `test-api`'s `window_replacements` is the deprecated version of that
+shim and the old kit's `lib/fido2/browser_env.js` is the maintained one; either
+is worth reading, neither is worth depending on.
+
+The one design decision worth getting right is what `navigator.credentials.get`
+is pointed at. The old kit pointed it at `@vincss-public-projects/fido2-client`
+over hidapi, which is why everything built on it needed a kernel device node.
+Pointing it at **this kit's own `lib/device/ctap2.js`** instead needs no kernel
+node and no USB at all.
+
+**Where it goes: the front of section 3**, as its headless tier. Section 3 is
+now split at the file number, and the two halves have genuinely different
+requirements:
+
+| | files | needs | runs in CI |
+|---|---|---|---|
+| the library, headless | `03-gui/00-09` | nothing a browser has - shim + `lib/device/ctap2.js` | yes |
+| the page, in nw.js | `03-gui/10+` | `display`, and a device the page can reach | no |
+
+Putting the library at the front rather than in section 1 is the point of it: if
+the client cannot talk to the device headlessly, launching a browser to watch it
+fail again explains nothing. It is the GUI section's own pre-flight. `display`
+is a capability as of this change, so on a machine or runner without one the
+browser files skip with a stated reason while the library files still run.
+
+That also means the workflow's target should become `00-sanity 01-protocol
+03-gui` rather than section 1 alone - the browser half will skip itself, and
+saying so in the job summary is more honest than not running the section.
+
+And it settles what `lib/device/tunnel.js` is for. It is a port of
+`onlykey-api.js`'s `encode_ctaphid_request_as_keyhandle()`, and a second copy of
+a client is a liability only if nothing ever compares them. Compared, it is the
+independent oracle: the kit's reading of the tunnel format on one side, the
+shipped library on the other, one firmware underneath. Same shape as
+`00-venv.test.js` asserting that the CLI and the kit agree about what the device
+just said.
+
+Two things to carry across when that happens, both learned the expensive way:
 
 - `location.hostname` **must** be `onlyagent.app`. It is folded into the
   derivation - `okcrypto_hkdf()` reads the RPID staged at `ctap_buffer+4` - and
@@ -93,7 +125,7 @@ a section that does not exist yet.
 | ✅ | `01-pqc-keygen` — X-Wing keygen (TC-04) | cli | `01-pqc-keygen` | plus the readback the old kit never did, which is what found **two firmware bugs** (`libraries@83353cf`) that made every generated PQC key unusable |
 | ✅ | `02-pqc-slot` — PQC slot selection (TC-06) | cli | `02-pqc-slot` | and the reserved-slot case now proves the plugin refused on the ARGUMENT, by asserting the device primed no challenge |
 | ✅ | `03-pqc-decrypt` — X-Wing encrypt/decrypt (TC-05) | cli | `03-pqc-decrypt` | real `age`, encrypted on the host, decrypted on the device, byte for byte — and the end-to-end proof that `libraries@83353cf` fixed something real, since both bugs surfaced here as "no identity matched any of the recipients" |
-| ☐ | `04-pqc-no-device` — decrypt with no device (TC-07) | cli | — | two-phase: generate an identity WITH a device, then prove `age -d` fails cleanly without one. The old kit needed a hand on the cable and mostly skipped; the gadget can unplug itself, so this finally runs unattended — see the `bus-detach` capability |
+| ✅ | `04-pqc-no-device` — decrypt with no device (TC-07) | cli | `04-pqc-no-device` | **unattended, in 27 seconds.** The old kit printed "please UNPLUG the OnlyKey now", waited two minutes for a human, and was skipped by default. The gadget unbinds its own UDC, and the firmware keeps running with its RAM intact — which a hand on the cable could not arrange either, an OnlyKey being bus-powered |
 | ✅ | `05-age-pqc-derived` — split custody, JS math | sanity | `04-age-pqc-derived` | **no binaries, no device, no node-hid.** Six tests in 80ms, including the fixed vector from python-onlykey's own `derived_xwing.py`, so this is cross-language agreement and not self-consistency. The three `@noble` packages are optional dependencies behind the `xwing-math` capability |
 | ⚠️ | `10-fido2-xwing-derive` — X-Wing derive over FIDO2 (TC-09/10) | protocol | `12-webauthn-tunnel` | the tunnel it rides on is built and proven on both adapters; the X-Wing derive command itself still needs its option bytes worked out |
 | ☐ | `17-nodejs-composite-pgp` — composite PGP-PQC over Node FIDO2 (TC-11) | cli | — | mixed: the FIDO2 half is plane 3 and reachable now, but it also shells to `onlykey-cli` |
@@ -131,11 +163,11 @@ What that leaves is lopsided, and worth knowing before picking anything up:
 |---|---|---|
 | sanity | 0 | done |
 | protocol | 1 (partial) | nothing - `10`'s transport is done; the derive command is not |
-| cli | 5 | nothing - the section runs; these are now just tests to write |
+| cli | 4 | nothing - the section runs; these are now just tests to write |
 | gui | 4 | stage 6, and a display |
 
 So "get all the tests over" is mostly a CLI problem, not a protocol one. Stage 3
-is done and the section runs; the five rows left there are tests to write rather
+is done and the section runs; the four rows left there are tests to write rather
 than anything to unblock.
 
 ### New tests that replaced nothing
@@ -338,7 +370,12 @@ consequence.
       device's own print as the press signal - which here is the ONLY signal,
       because `age` runs the plugin as its own child and does not relay its
       stderr
-- [ ] The rest of the CLI rows: `04-pqc-no-device`, lib-agent SSH and GPG
+- [x] `04-pqc-no-device`, on a new `device.unplug()`/`device.plug()`: a real
+      bus-level detach, waiting for the hidraw nodes to actually go rather than
+      for the write that causes it, since a client enumerating in that window
+      still finds a device
+- [ ] The rest of the CLI rows: lib-agent SSH and GPG, `11-derived-xwing-cli`,
+      `17-nodejs-composite-pgp`
 - [ ] Then start section 2 against the emulator: `onlykey-cli` through the
       venv, driven by visible start/stop test files rather than hooks. The CLI
       exposes **36 subcommands** - that list is the section-2 checklist
@@ -405,7 +442,10 @@ slot fields are worse — two of twenty-eight.
 
 ## Stage 6 — the sections that need a display
 
-- [ ] Section 3, the web app in nw.js
+- [ ] Section 3's headless tier first (`03-gui/00-09`): the web app's own
+      device library, shimmed onto `lib/device/ctap2.js`. No display, no USB —
+      see "Three kits, not two" above
+- [ ] Section 3's browser tier (`03-gui/10+`), the web app in nw.js
 - [ ] Section 4, the OnlyKey app — never driven from a harness at all
 - [ ] Services started and stopped by *visible* test files at the section
       boundaries, never hooks; cleanup tracks process groups, because nw.js can
