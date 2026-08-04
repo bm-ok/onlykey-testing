@@ -10,8 +10,12 @@ Counts are as of 2026-08-04, both adapters green:
 |---|---|---|
 | sanity | 35 passed, 0 failed | same - it needs no device |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed |
-| section 2 | 4 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
-| **whole tree** | **107 passed** | **94 passed, 15 skipped-with-reason** |
+| section 2 | 12 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
+| **whole tree** | **115 passed** | **94 passed, 23 skipped-with-reason** |
+
+Hardware counts are from before the PQC work; section 2 cannot run there at all,
+so the only thing waiting on a key is a re-run of sections 0 and 1 against
+`libraries@83353cf`, which needs a Teensy rebuild and a reflash.
 
 ## Tests carried over
 
@@ -30,8 +34,8 @@ a section that does not exist yet.
 | ✅ | `13-fido2-standard-ceremony` — makeCredential/getAssertion | protocol | `11-fido2-ceremony` | now with no browser and no hidapi, and the signature verified in pure JS |
 | ⚠️ | `08-backup-hmac` — backup and HMAC settings (TC-13) | protocol | `10-backup-restore` | the **backup half is more than carried over**: the old kit called a full round trip untestable, and this does it. The HMAC settings half is not covered |
 | ⚠️ | `12-non-pqc-regression` — slot labels, classic ECC + RSA (TC-15) | protocol | `08-slot-keyboard` | labels and slot storage covered; classic ECC and RSA key handling is not |
-| ☐ | `01-pqc-keygen` — X-Wing keygen (TC-04) | cli | — | drives `age-plugin-onlykey --generate`, not the vendor protocol → **stage 3** |
-| ☐ | `02-pqc-slot` — PQC slot selection (TC-06) | cli | — | `age-plugin-onlykey --generate --slot N`; two of its three cases never touch the device |
+| ✅ | `01-pqc-keygen` — X-Wing keygen (TC-04) | cli | `01-pqc-keygen` | plus the readback the old kit never did, which is what found **two firmware bugs** (`libraries@83353cf`) that made every generated PQC key unusable |
+| ✅ | `02-pqc-slot` — PQC slot selection (TC-06) | cli | `02-pqc-slot` | and the reserved-slot case now proves the plugin refused on the ARGUMENT, by asserting the device primed no challenge |
 | ☐ | `03-pqc-decrypt` — X-Wing encrypt/decrypt (TC-05) | cli | — | drives `age` and `age-plugin-onlykey` |
 | ☐ | `04-pqc-no-device` — decrypt with no device (TC-07) | cli | — | two-phase: generate an identity WITH a device, then prove `age -d` fails cleanly without one. The old kit needed a hand on the cable and mostly skipped; the gadget can unplug itself, so this finally runs unattended — see the `bus-detach` capability |
 | ✅ | `05-age-pqc-derived` — split custody, JS math | sanity | `04-age-pqc-derived` | **no binaries, no device, no node-hid.** Six tests in 80ms, including the fixed vector from python-onlykey's own `derived_xwing.py`, so this is cross-language agreement and not self-consistency. The three `@noble` packages are optional dependencies behind the `xwing-math` capability |
@@ -56,7 +60,7 @@ desktop app).
 section 4 is the one part of this kit with no ancestor at all — which is also
 why it is last.
 
-**6 of 19 carried over, 2 of those partially.**
+**8 of 19 carried over, 2 of those partially.**
 
 The sections were checked against what each file actually EXECUTES, not what its
 name suggests, and that moved five rows. The whole PQC cluster - `01`, `02`,
@@ -71,11 +75,12 @@ What that leaves is lopsided, and worth knowing before picking anything up:
 |---|---|---|
 | sanity | 0 | done |
 | protocol | 1 (partial) | nothing - `10`'s transport is done; the derive command is not |
-| cli | 8 | nothing - the section runs; these are now just tests to write |
+| cli | 6 | nothing - the section runs; these are now just tests to write |
 | gui | 4 | stage 6, and a display |
 
-So "get all the tests over" is mostly a CLI problem, not a protocol one, and
-stage 3 is the thing standing in front of eight of the thirteen.
+So "get all the tests over" is mostly a CLI problem, not a protocol one. Stage 3
+is done and the section runs; the six rows left there are tests to write rather
+than anything to unblock.
 
 ### New tests that replaced nothing
 
@@ -92,6 +97,11 @@ human watching could not have run them:
   needs privileged access to every keystroke on the machine
 - the `wipe_slot()` null-dereference regression, for a bug the emulator found
   and hardware had hidden for years
+- `01-pqc-keygen`'s readback and its `wrote === 1` flash-write count, for the
+  two PQC keygen bugs (`libraries@83353cf`). Neither needed the emulator to
+  REPRODUCE - they were in every build - but both needed a test willing to ask
+  the device a second question and to count what the device did, and the old
+  kit could do neither
 
 ---
 
@@ -262,7 +272,13 @@ consequence.
 - [x] **Verified live.** With the key unplugged and the daemon stopped, the kit
       raised its own gadget, python-onlykey saw exactly one device, and all four
       tests passed. Full run: sanity + protocol + cli = **101 passed, 0 failed**
-- [ ] Then the rest of the CLI rows: the PQC cluster, lib-agent SSH and GPG
+- [x] The PQC keygen rows, `01-pqc-keygen` and `02-pqc-slot`, on `lib/pqc.js`:
+      config-mode entry, the three-button challenge computed rather than read
+      off the LEDs, and the press timed on the device's own "Encrypted Buffer"
+      rather than a blind margin. **Both found firmware bugs** - see the
+      `wrote === 1` assertion, which is a regression test for one of them
+- [ ] The rest of the CLI rows: `03-pqc-decrypt`, `04-pqc-no-device`,
+      lib-agent SSH and GPG
 - [ ] Then start section 2 against the emulator: `onlykey-cli` through the
       venv, driven by visible start/stop test files rather than hooks. The CLI
       exposes **36 subcommands** - that list is the section-2 checklist
