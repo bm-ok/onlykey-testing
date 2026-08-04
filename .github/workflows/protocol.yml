@@ -1,0 +1,149 @@
+# Section 1 on a hosted runner.
+#
+# ============================ UNTESTED ============================
+# This has never run. It is written from what is known to work on a
+# workstation - the same commands, in the same order - but nothing here has
+# been executed by GitHub, and a workflow that has not run is a guess.
+#
+# It is therefore DISABLED: `workflow_dispatch` only, no push or pull_request
+# trigger. Turning it on means adding those triggers, and doing that before it
+# has passed once by hand would put a red X on every commit for reasons that
+# have nothing to do with the commits.
+#
+# Expect the first few runs to fail on the checkout step or the addon build.
+# The device work itself is the part most likely to be fine, because it is what
+# has been exercised locally.
+# ==================================================================
+#
+# What can run here, and why nothing else can: a hosted runner has no USB, no
+# kernel HID device and no display. That rules out node-hid, python-onlykey,
+# lib-agent, the web app and the desktop app - sections 2, 3 and 4 are not
+# deferred here, they are impossible. What survives is exactly the tests that
+# reach the device inside this process, over the emulator's in-memory HID bus.
+
+name: protocol (section 1)
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: what to run
+        default: 01-protocol
+        required: false
+
+# Repositories, all from the same owner as this kit. The emulator is the parent
+# checkout; the firmware and libraries are what it compiles.
+env:
+  EMULATOR_REPO: bm-ok/node-onlykey-emulator
+  FIRMWARE_REPO: bm-ok/OnlyKey-Firmware
+  LIBRARIES_REPO: bm-ok/0c-coder-libraries
+
+jobs:
+  section-1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: check out the test kit
+        uses: actions/checkout@v4
+        with:
+          path: onlykey/onlykey-testing
+
+      # The kit finds the emulator at ../../emulator relative to its own root,
+      # so the tree has to be assembled in that shape - or OKEMU_ROOT has to
+      # say otherwise. Assembling it keeps one code path.
+      - name: check out the emulator
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.EMULATOR_REPO }}
+          path: emulator-repo
+
+      - name: check out the firmware sources
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.FIRMWARE_REPO }}
+          path: onlykey/OnlyKey-Firmware
+
+      - name: check out the libraries
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.LIBRARIES_REPO }}
+          path: onlykey/libraries
+
+      - name: put the emulator where the kit expects it
+        run: mv emulator-repo/emulator ./emulator
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # THE setting. At the unprivileged default (65536) the device boots and
+      # answers HID and only segfaults once it encrypts something - so a run
+      # that skips this looks healthy right up until the first test that stores
+      # a PIN. 4096 maps certified_hw at 0x5BB0 and leaves page zero unmapped,
+      # so a genuine NULL dereference still faults.
+      - name: lower vm.mmap_min_addr
+        run: sudo sysctl -w vm.mmap_min_addr=4096
+
+      - name: build the emulator addon
+        working-directory: emulator
+        run: |
+          npm install
+          npm run build
+
+      # Assert the rung BEFORE running anything. If this is wrong, every crypto
+      # test is going to fail in a way that looks like a firmware bug.
+      - name: assert the rung
+        working-directory: onlykey/onlykey-testing
+        run: |
+          node bin/okt.js caps
+          node -e '
+            const { detect } = require("./lib/capabilities");
+            const caps = detect({ adapter: "emulated" });
+            if (!caps.has("crypto")) {
+              console.error("wrong mmap rung: " + caps.why("crypto"));
+              process.exit(1);
+            }
+            console.log("rung ok: " + caps.rung.name);
+          '
+
+      - name: list what will run
+        working-directory: onlykey/onlykey-testing
+        run: node bin/okt.js list ${{ inputs.target || '01-protocol' }}
+
+      # The exit code IS the verdict - 0 passed, 1 a test failed, 2 firmware
+      # crash, 3 watchdog, 4 runner error, 5 the device host died. Nothing here
+      # greps the log to decide.
+      - name: run section 1
+        working-directory: onlykey/onlykey-testing
+        run: node bin/okt.js run ${{ inputs.target || '01-protocol' }}
+
+      # Always: a failed run is exactly when the log and the status file matter,
+      # and each run directory carries its own device output and failure blocks.
+      - name: keep the run directory
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-${{ github.run_id }}
+          path: onlykey/onlykey-testing/runs/
+          retention-days: 14
+
+      # Sections 2-4 are not skipped here for convenience. Saying so in the job
+      # summary means nobody has to read the source to find out why a green run
+      # covered a third of the tree.
+      - name: say what a hosted runner cannot do
+        if: always()
+        run: |
+          {
+            echo "### Not run here, and not runnable here"
+            echo ""
+            echo "A hosted runner has no USB, no kernel HID device and no display."
+            echo ""
+            echo "| section | why |"
+            echo "|---|---|"
+            echo "| 02-cli | python-onlykey finds the device through hidapi; there is no /dev/hidraw |"
+            echo "| 03-gui | the web app needs a browser and a display |"
+            echo "| 04-app | the desktop app needs both, plus the browser WebAuthn stack |"
+            echo ""
+            echo "These belong to a self-hosted runner or a workstation."
+          } >> "$GITHUB_STEP_SUMMARY"
