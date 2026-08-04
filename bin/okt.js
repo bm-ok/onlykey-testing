@@ -29,24 +29,34 @@ const { EXIT } = require('../lib/report');
 
 function usage() {
   console.log(`usage:
-  okt run [target...]  [--test <substring>] [--timeout <ms>] [--quiet]
+  okt run [target...]  [--hardware] [--test <substring>] [--timeout <ms>] [--quiet]
   okt list [target...]
   okt caps
   okt fixture <state>
 
 targets are section names (01-protocol), directories, or single files.
 
+--hardware drives a physical key over /dev/hidraw instead of the emulator. The
+emulator's USB gadget is excluded by default because it is indistinguishable
+from a key by VID/PID; OKT_ALLOW_GADGET=yes targets it deliberately, and
+OKT_USB_PATH picks one when several are attached.
+
 exit codes: 0 pass  1 test failure  2 firmware crash  3 watchdog
             4 runner error  5 device host died`);
 }
 
 function parse(argv) {
-  const out = { command: argv[2] || 'help', targets: [], filter: null, timeoutMs: null, quiet: false };
+  const out = {
+    command: argv[2] || 'help', targets: [], filter: null,
+    timeoutMs: null, quiet: false, adapter: 'emulated',
+  };
   for (let i = 3; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--test') out.filter = argv[++i];
     else if (a === '--timeout') out.timeoutMs = parseInt(argv[++i], 10);
     else if (a === '--quiet') out.quiet = true;
+    else if (a === '--hardware') out.adapter = 'hardware';
+    else if (a === '--emulated') out.adapter = 'emulated';
     else if (a === '--help' || a === '-h') { usage(); process.exit(0); }
     else if (a.startsWith('-')) { console.error(`unknown option: ${a}`); process.exit(EXIT.RUNNER_ERROR); }
     else out.targets.push(a);
@@ -62,6 +72,7 @@ async function main() {
       const { run } = require('../lib/runner');
       const { code } = await run({
         targets: args.targets,
+        adapter: args.adapter,
         quiet: args.quiet,
         timeoutMs: args.timeoutMs || undefined,
         testFilter: args.filter
@@ -75,7 +86,7 @@ async function main() {
     case 'list': {
       const { list } = require('../lib/runner');
       const { detect } = require('../lib/capabilities');
-      const caps = detect({ adapter: 'emulated' });
+      const caps = detect({ adapter: args.adapter });
 
       console.log(`mmap rung: ${caps.rung.name} (vm.mmap_min_addr=${caps.rung.minAddr})`);
       for (const cap of caps.list()) {
@@ -111,7 +122,8 @@ async function main() {
 
     case 'caps': {
       const { detect } = require('../lib/capabilities');
-      const caps = detect({ adapter: 'emulated' });
+      const caps = detect({ adapter: args.adapter });
+      console.log(`adapter: ${caps.adapter}`);
       console.log(`rung: ${caps.rung.name} (vm.mmap_min_addr=${caps.rung.minAddr})`);
       for (const cap of caps.list()) {
         console.log(`  ${cap.ok ? '[x]' : '[ ]'} ${cap.name}${cap.ok ? '' : `\n        ${cap.why}`}`);

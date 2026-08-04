@@ -20,19 +20,23 @@ describe('boot', { state: 'blank' }, () => {
     assert.ok(device.log.text.length > 0, 'the device produced no debug output at all');
   });
 
-  it('backs its storage with two files of exactly the right size', async ({ device, assert }) => {
+  it('backs its storage with two files of exactly the right size',
+    async ({ device, assert, skip }) => {
+      if (!device.capabilities.has('storage-files')) {
+        skip(device.capabilities.why('storage-files'));
+      }
     /*
      * Size is not a detail here. The firmware's loader validates size and
      * NOTHING else, and on any mismatch it truncates the file to zero and
      * rewrites the whole thing with 0xFF - so a wrong-sized image does not fail
      * loudly, it silently becomes a factory-blank device.
      */
-    for (const [name, expected] of Object.entries(IMAGE_SIZES)) {
-      const file = path.join(device.storageDir, name);
-      assert.ok(fs.existsSync(file), `${name} was never created`);
-      assert.equal(fs.statSync(file).size, expected, `${name} is the wrong size`);
-    }
-  });
+      for (const [name, expected] of Object.entries(IMAGE_SIZES)) {
+        const file = path.join(device.storageDir, name);
+        assert.ok(fs.existsSync(file), `${name} was never created`);
+        assert.equal(fs.statSync(file).size, expected, `${name} is the wrong size`);
+      }
+    });
 
   it('reports a state over the wire', async ({ device, assert }) => {
     const { state, raw } = await device.status();
@@ -40,9 +44,12 @@ describe('boot', { state: 'blank' }, () => {
   });
 
   it('runs at a mmap rung that matches the capabilities it was given',
-    async ({ device, assert }) => {
+    async ({ device, assert, skip }) => {
       const caps = device.capabilities;
       assert.ok(caps, 'the runner injected no capability set');
+      /* The rung is a property of the emulator's flash MAPPING. A physical key
+       * has no mapping to constrain - its flash is on the key. */
+      if (caps.adapter !== 'emulated') skip('the mmap rung only constrains the emulator');
 
       /*
        * The rung is read back and treated as a capability rather than assumed,

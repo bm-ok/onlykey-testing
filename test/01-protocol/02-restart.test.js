@@ -22,7 +22,10 @@ describe('restart', { state: 'blank' }, () => {
     assert.equal(device.restarts, before + 1, 'the restart should have been counted');
   });
 
-  it('is classified as expected, not as a kill', async ({ device, assert }) => {
+  it('is classified as expected, not as a kill', async ({ device, assert, skip }) => {
+    if (!device.capabilities.has('device-host')) {
+      skip(device.capabilities.why('device-host'));
+    }
     /*
      * The marker is what makes this answerable. An expected restart and an OOM
      * kill are byte-identical to the parent - both arrive as code:null,
@@ -48,7 +51,10 @@ describe('restart', { state: 'blank' }, () => {
     assert.equal(state, 'uninitialized', 'a reboot is not a wipe');
   });
 
-  it('keeps its storage across the reboot', async ({ device, assert, signal }) => {
+  it('keeps its storage across the reboot', async ({ device, assert, signal, skip }) => {
+    if (!device.capabilities.has('storage-files')) {
+      skip(device.capabilities.why('storage-files'));
+    }
     /*
      * A reboot must not lose flash. The emulated flash is MAP_SHARED and
      * file-backed precisely so the kernel persists it however the process dies

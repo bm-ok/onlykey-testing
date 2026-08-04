@@ -17,5 +17,8 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "optionalDependencies": {
+    "node-hid": "^3.4.0"
   }
 }

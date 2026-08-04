@@ -15,7 +15,8 @@ const path = require('path');
 const { describe, it } = require('../../lib/harness');
 const { PINS, IMAGE_SIZES } = require('../../lib/config');
 
-describe('snapshot restore', { state: 'initialized', requires: ['crypto'] }, () => {
+describe('snapshot restore',
+  { state: 'initialized', requires: ['crypto', 'image-snapshots'] }, () => {
   it('restores images of exactly the right size', async ({ device, assert }) => {
     /*
      * The loader validates size and nothing else, and on any mismatch - too
