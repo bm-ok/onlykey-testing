@@ -14,11 +14,14 @@
  * keeps the fixture isolation section 1 has, instead of being pointed at
  * whatever long-running daemon happens to be about.
  *
- * `requires: kernel-hid` is what gates all of it. On a hosted runner there is
- * no /dev/hidraw at all and this can never run; on a workstation it runs only
- * when the gadget is free and unambiguous - see lib/gadget.js, which refuses
- * when a physical key is attached alongside, because python-onlykey takes the
- * first match and cannot tell them apart.
+ * `requires: client-access` is what gates all of it, and it is deliberately
+ * narrower than `kernel-hid`. A hosted runner has no /dev/hidraw at all, so
+ * this can never run there. A physical key HAS one - but the kit's own adapter
+ * is holding it, and two clients on one node do not fail cleanly, they fail
+ * intermittently and blame the firmware. Only the gadget gives a second client
+ * its own end of the link. See lib/gadget.js, which additionally refuses when a
+ * key is attached alongside, because clients take the first match and cannot
+ * tell the two apart.
  */
 'use strict';
 
@@ -27,7 +30,7 @@ const { PINS } = require('../../lib/config');
 const cli = require('../../lib/cli');
 
 describe('onlykey-cli',
-  { state: 'initialized', requires: ['crypto', 'kernel-hid'], timeoutMs: 120000 }, () => {
+  { state: 'initialized', requires: ['crypto', 'client-access'], timeoutMs: 120000 }, () => {
     it('has the venv it needs', async ({ assert, skip }) => {
       if (!cli.venvPresent()) skip(`no venv at ${cli.VENV_BIN}`);
       assert.ok(cli.binary('onlykey-cli'), 'onlykey-cli is missing from the venv');
