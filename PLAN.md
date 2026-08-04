@@ -8,6 +8,7 @@ Counts are as of 2026-08-04, both adapters green:
 
 | | emulated | hardware |
 |---|---|---|
+| sanity | 21 passed, 0 failed | same - it needs no device |
 | section 1 | 62 passed, 0 failed, 3 skipped | 53 passed, 0 failed, 12 skipped-with-reason |
 
 ## Tests carried over
@@ -31,7 +32,7 @@ a section that does not exist yet.
 | ☐ | `02-pqc-slot` — PQC slot selection (TC-06) | cli | — | `age-plugin-onlykey --generate --slot N`; two of its three cases never touch the device |
 | ☐ | `03-pqc-decrypt` — X-Wing encrypt/decrypt (TC-05) | cli | — | drives `age` and `age-plugin-onlykey` |
 | ☐ | `04-pqc-no-device` — decrypt with no device (TC-07) | cli | — | the *absence* of a device is the test, but it still runs the plugin binary |
-| ☐ | `05-age-pqc-derived` — split custody, JS math | protocol | — | **no binaries, no device, no node-hid** — pure JS, and the easiest thing on this list |
+| ☐ | `05-age-pqc-derived` — split custody, JS math | sanity | — | **no binaries, no device, no node-hid** — belongs in the sanity section, which now exists for exactly this |
 | ☐ | `10-fido2-xwing-derive` — X-Wing derive over FIDO2 (TC-09/10) | protocol | — | the old one went through hidapi; the plane-3 tunnel on our own CTAP2 port needs neither → **stage 5** |
 | ☐ | `17-nodejs-composite-pgp` — composite PGP-PQC over Node FIDO2 (TC-11) | cli | — | mixed: the FIDO2 half is plane 3 and reachable now, but it also shells to `onlykey-cli` |
 | ☐ | `06-lib-agent-ssh` — SSH derived-key export (TC-13) | cli | — | lib-agent finds the device through hidapi → **stage 3** |
@@ -42,10 +43,12 @@ a section that does not exist yet.
 | ☐ | `17-nwjs-composite-pgp` (TC-11) | gui | — | **stage 6** |
 | ☐ | `18-gui-encrypt-decrypt` | gui | — | drives `localhost:3000/app/encrypt` |
 
-Sections are the kit's own four: **protocol** (`test/01-protocol`, no kernel
-device node, the only one CI can run), **cli** (`test/02-cli`, onlykey-cli
-through the venv), **gui** (`test/03-gui`, the onlykey.github.io web app in
-nw.js) and **app** (`test/04-app`, the OnlyKey desktop app).
+Sections are the kit's own: **sanity** (`test/00-sanity`, no device at all -
+the kit's own oracles against known answers), **protocol** (`test/01-protocol`,
+no kernel device node, the only device section CI can run), **cli**
+(`test/02-cli`, onlykey-cli through the venv), **gui** (`test/03-gui`, the
+onlykey.github.io web app in nw.js) and **app** (`test/04-app`, the OnlyKey
+desktop app).
 
 **Nothing maps to `app`.** The old kit never drove the desktop app either, so
 section 4 is the one part of this kit with no ancestor at all — which is also
@@ -64,7 +67,8 @@ What that leaves is lopsided, and worth knowing before picking anything up:
 
 | section | open | blocked on |
 |---|---|---|
-| protocol | 2 | nothing - `05` is pure JS, `10` needs the plane-3 tunnel we can now write |
+| sanity | 1 | nothing - `05` is pure JS and the section is built |
+| protocol | 1 | nothing - `10` needs the plane-3 tunnel we can now write |
 | cli | 8 | **stage 3** - the capability fix, then the section itself |
 | gui | 4 | stage 6, and a display |
 
@@ -108,6 +112,12 @@ human watching could not have run them:
 - [x] Hardware adapter, selecting by sysfs so the emulator's gadget cannot be
       mistaken for a key
 - [x] `okt flash`, paced, because HalfKay NAKs a direct-attached burst
+- [x] A **sanity section** (`test/00-sanity`) that runs first and needs no
+      device: the kit's own oracles - CBOR, the keystroke decoder, the vendor
+      and CTAPHID framing, the backup format - against known answers. 21 tests
+      in under a second. `device: false` in a file's metadata skips the device
+      host entirely
+- [ ] Port `05-age-pqc-derived`'s split-custody maths into it
 
 ## Stage 1 — section 1, protocol ✅
 
