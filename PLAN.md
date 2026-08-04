@@ -20,31 +20,41 @@ files split across several new ones, several new ones replace nothing because
 the emulator made them possible for the first time, and the rest are waiting on
 a section that does not exist yet.
 
-| | old test | replaced by | note |
-|---|---|---|---|
-| ✅ | `00-setup` — device initial setup (SETUP-02/03/04) | `04-provisioning`, `07-unlock` | the old one skipped itself unless `ONLYKEY_CONFIRM_SETUP=yes`; the emulated device has nothing to lose, so it runs every time |
-| ✅ | `09-fido2-connect` — CTAP2 handshake | `09-fido-ctaphid` | plus the locked-device case, which the old kit did not check |
-| ✅ | `13-fido2-standard-ceremony` — makeCredential/getAssertion | `11-fido2-ceremony` | now with no browser and no hidapi, and the signature verified in pure JS |
-| ⚠️ | `08-backup-hmac` — backup and HMAC settings (TC-13) | `10-backup-restore` | the **backup half is more than carried over**: the old kit called a full round trip untestable, and this does it. The HMAC settings half is not covered |
-| ⚠️ | `12-non-pqc-regression` — slot labels, classic ECC + RSA (TC-15) | `08-slot-keyboard` | labels and slot storage covered; classic ECC and RSA key handling is not |
-| ☐ | `01-pqc-keygen` — X-Wing keygen (TC-04) | — | needs `OKSETPRIV`/genkey and config mode → **stage 5b** |
-| ☐ | `02-pqc-slot` — PQC slot selection (TC-06) | — | **stage 5b** |
-| ☐ | `03-pqc-decrypt` — X-Wing encrypt/decrypt (TC-05) | — | needs `OKDECRYPT` → **stage 5b** |
-| ☐ | `04-pqc-no-device` — decrypt with no device (TC-07) | — | client-side behaviour; cheap, and does not need a device at all |
-| ☐ | `05-age-pqc-derived` — split custody, JS math | — | pure JS with no device in it — the easiest thing on this list to bring over |
-| ☐ | `10-fido2-xwing-derive` — X-Wing derive over FIDO2 (TC-09/10) | — | the plane-3 WebAuthn tunnel → **stage 5** |
-| ☐ | `17-nodejs-composite-pgp` — composite PGP-PQC over Node FIDO2 (TC-11) | — | plane 3, on top of the derive above |
-| ☐ | `06-lib-agent-ssh` — SSH derived-key export (TC-13) | — | lib-agent finds the device through hidapi → **section 2** |
-| ☐ | `07-lib-agent-gpg` — GPG derived identity (TC-13) | — | **section 2** |
-| ☐ | `11-derived-xwing-cli` — CLI derived X-Wing (TC-16/17) | — | **section 2** |
-| ☐ | `14-gui-password-generator` | — | **section 3**, needs a display |
-| ☐ | `15-gui-age-derive` (TC-18/19) | — | **section 3** |
-| ☐ | `17-nwjs-composite-pgp` (TC-11) | — | **section 3** |
-| ☐ | `18-gui-encrypt-decrypt` | — | **section 3** |
+| | old test | section | replaced by | note |
+|---|---|---|---|---|
+| ✅ | `00-setup` — device initial setup (SETUP-02/03/04) | protocol | `04-provisioning`, `07-unlock` | the old one skipped itself unless `ONLYKEY_CONFIRM_SETUP=yes`; the emulated device has nothing to lose, so it runs every time |
+| ✅ | `09-fido2-connect` — CTAP2 handshake | protocol | `09-fido-ctaphid` | plus the locked-device case, which the old kit did not check |
+| ✅ | `13-fido2-standard-ceremony` — makeCredential/getAssertion | protocol | `11-fido2-ceremony` | now with no browser and no hidapi, and the signature verified in pure JS |
+| ⚠️ | `08-backup-hmac` — backup and HMAC settings (TC-13) | protocol | `10-backup-restore` | the **backup half is more than carried over**: the old kit called a full round trip untestable, and this does it. The HMAC settings half is not covered |
+| ⚠️ | `12-non-pqc-regression` — slot labels, classic ECC + RSA (TC-15) | protocol | `08-slot-keyboard` | labels and slot storage covered; classic ECC and RSA key handling is not |
+| ☐ | `01-pqc-keygen` — X-Wing keygen (TC-04) | protocol | — | needs `OKSETPRIV`/genkey and config mode → **stage 5b** |
+| ☐ | `02-pqc-slot` — PQC slot selection (TC-06) | protocol | — | **stage 5b** |
+| ☐ | `03-pqc-decrypt` — X-Wing encrypt/decrypt (TC-05) | protocol | — | needs `OKDECRYPT` → **stage 5b** |
+| ☐ | `04-pqc-no-device` — decrypt with no device (TC-07) | protocol | — | client-side behaviour; needs no device at all |
+| ☐ | `05-age-pqc-derived` — split custody, JS math | protocol | — | pure JS with no device in it — the easiest thing on this list to bring over |
+| ☐ | `10-fido2-xwing-derive` — X-Wing derive over FIDO2 (TC-09/10) | protocol | — | the plane-3 WebAuthn tunnel → **stage 5** |
+| ☐ | `17-nodejs-composite-pgp` — composite PGP-PQC over Node FIDO2 (TC-11) | protocol | — | plane 3, on top of the derive above |
+| ☐ | `06-lib-agent-ssh` — SSH derived-key export (TC-13) | cli | — | lib-agent finds the device through hidapi → **stage 3** |
+| ☐ | `07-lib-agent-gpg` — GPG derived identity (TC-13) | cli | — | **stage 3** |
+| ☐ | `11-derived-xwing-cli` — CLI derived X-Wing (TC-16/17) | cli | — | **stage 3** |
+| ☐ | `14-gui-password-generator` | gui | — | drives `localhost:3000/app/password-generator`; needs a display |
+| ☐ | `15-gui-age-derive` (TC-18/19) | gui | — | **stage 6** |
+| ☐ | `17-nwjs-composite-pgp` (TC-11) | gui | — | **stage 6** |
+| ☐ | `18-gui-encrypt-decrypt` | gui | — | drives `localhost:3000/app/encrypt` |
+
+Sections are the kit's own four: **protocol** (`test/01-protocol`, no kernel
+device node, the only one CI can run), **cli** (`test/02-cli`, onlykey-cli
+through the venv), **gui** (`test/03-gui`, the onlykey.github.io web app in
+nw.js) and **app** (`test/04-app`, the OnlyKey desktop app).
+
+**Nothing maps to `app`.** The old kit never drove the desktop app either, so
+section 4 is the one part of this kit with no ancestor at all — which is also
+why it is last.
 
 **5 of 19 carried over, 2 of those partially.** The rest are not oversights:
-eight of them need the CLI or a browser, which are sections that do not exist
-yet, and four need vendor messages nothing in the kit sends.
+seven of them need the CLI or a browser, which are sections that do not exist
+yet, and five need vendor messages or the WebAuthn tunnel that nothing in the
+kit sends.
 
 ### New tests that replaced nothing
 
