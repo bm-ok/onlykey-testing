@@ -43,6 +43,70 @@ Counts are as of 2026-08-04, both adapters green:
 
 ---
 
+## The protocol surface
+
+Determined by reading the three clients that already exist: python-onlykey's
+`client.py`/`cli.py`, OnlyKey-App's `OnlyKeyComm.js`, and
+`onlykey.github.io/src/onlykey-fido2`. The firmware's `okcore.h` is the
+authority where they disagree, and they do: the app calls 227 `OKSETPIN2` where
+the firmware calls it `OKPINSEC` and python calls it `OKSETPDPIN`.
+
+There are **three planes**, not one, and only the first is well covered.
+
+### Plane 1 — the vendor interface (RawHID2, usage `0xFFAB`)
+
+Eighteen live message types. `0xE8`-`0xEB` were the U2F cert/key messages and
+are removed in this firmware. This is what the CLI and the desktop app speak.
+
+| | messages |
+|---|---|
+| **covered (9)** | `OKPIN` `OKPINSD` `OKPINSEC` `OKCONNECT` `OKGETLABELS` `OKSETSLOT` `OKWIPESLOT` `OKSETPRIV` `OKRESTORE` |
+| **not covered (9)** | `OKGETPUBKEY` `OKSIGN` `OKWIPEPRIV` `OKDECRYPT` `OKGETRESPONSE` `OKPING` `OKFWUPDATE` `OKHMAC` `OKWEBAUTHN` |
+
+Underneath `OKSETSLOT` sit **28 slot fields** and **6 key types** (ed25519,
+P256, secp256k1, curve25519, ML-KEM-768, X-Wing). The kit writes exactly two
+fields: `LABEL` and `PASSWORD`. Everything else - TOTP keys, the delay and
+next-key chaining, wipe mode, key layout, type speed, the challenge modes - is
+untouched.
+
+`OKGETRESPONSE` is worth calling out on its own: it is how anything larger than
+one 64-byte report comes back, so every large-payload path depends on it and
+nothing tests it.
+
+### Plane 2 — CTAP2 proper (RawHID, usage `0xF1D0`)
+
+The firmware implements `MAKE_CREDENTIAL`, `GET_ASSERTION`, `GET_INFO`,
+`CLIENT_PIN`, `RESET`, `NEXT_ASSERTION`, `CANCEL` and `CBOR_CRED_MGMT`, plus
+the `hmac-secret` and `credProtect` extensions.
+
+The kit covers `INIT` and `PING` - the transport, not the protocol. Nothing
+CBOR is encoded or decoded anywhere in this repo yet.
+
+### Plane 3 — vendor commands tunnelled through WebAuthn
+
+The one that is easy to miss, and the one the web app actually uses.
+
+An ordinary CTAP2 `authenticatorGetAssertion` carries a fabricated credential ID
+in its `allowList`, and that credential ID *is* a vendor request:
+`(cmd, opt1, opt2, opt3, data)` behind the magic bytes `0x8C 0x27`. The device
+answers in the assertion's **signature** field. That is how a browser reaches
+OnlyKey's vendor commands with no WebHID permission prompt.
+
+Firmware side: `is_extension_request()`, called from three places in
+`ctap.cpp` (896, 1174, 1949). Reference client:
+`onlykey.github.io/src/onlykey-fido2/onlykey/onlykey-api.js`'s
+`encode_ctaphid_request_as_keyhandle()` /
+`decode_ctaphid_response_from_signature()`. The old kit ported both into
+`onlykey-alpha-testing/lib/fido2/ctaphid.js`, driving them with
+`@vincss-public-projects/fido2-client` over hidapi.
+
+The kit covers none of it - **and it is section-1 work**, because a fabricated
+GetAssertion can be written straight onto the in-process FIDO interface. It
+needs no kernel device node, no browser and no fido2-client. That distinction
+decides which stage it lands in.
+
+---
+
 ## Stage 2 — continuous integration
 
 **Why first:** EXPLAINER's opening claim is that CI *is* the reason for all of
@@ -73,7 +137,13 @@ consequence.
       assuming from the adapter name
 - [ ] `kernel-hid` true when a node exists, whoever is behind it
 - [ ] Then start section 2 against the emulator: `onlykey-cli` through the
-      venv, driven by visible start/stop test files rather than hooks
+      venv, driven by visible start/stop test files rather than hooks. The CLI
+      exposes **36 subcommands** - that list is the section-2 checklist
+- [ ] The old kit drove FIDO2 from Node with
+      `@vincss-public-projects/fido2-client` (the `bmatusiak/FIDO2Client` fork)
+      over hidapi. That route needs a kernel node, so it belongs here rather
+      than in section 1 - and it is worth having *as well as* the hand-rolled
+      section-1 path, because it tests what a real client does
 
 ## Stage 4 — the PINs we set every run and never test
 
@@ -86,17 +156,38 @@ all three and exercises one.
 - [ ] Self-destruct: emulated only — it factory-resets, which on a key means a
       reflash. Gate it on a capability that says exactly that
 
-## Stage 5 — CTAP2, not just CTAPHID
+## Stage 5 — CTAP2, and the WebAuthn tunnel
 
-**Why:** `09-fido-ctaphid` covers `INIT` and `PING` — the transport. A real
-ceremony needs a button press for user presence, which this kit can now do; the
-old kit needed a browser for it.
+**Why:** `09-fido-ctaphid` covers `INIT` and `PING` — the transport. Both of the
+protocols riding on it are untested, and both are reachable from section 1
+because the FIDO interface is in-process.
 
+- [ ] A CBOR encoder/decoder small enough to read — this is the missing
+      primitive under everything else here
+- [ ] `GET_INFO`: the cheapest real CTAP2 exchange, and it pins the versions
+      and extensions the firmware claims to support
 - [ ] MakeCredential with a real user-presence press
 - [ ] GetAssertion against that credential; verify the signature in pure JS
-- [ ] The `okcore.cpp:7645` null-dereference patch is **still unproven** —
-      nothing reaches the HMAC challenge-response wipe path. An HMAC test would
-      close it
+- [ ] The tunnel: fabricate the `allowList` credential ID, read the response out
+      of the signature field. Start with `OKGETPUBKEY`, which the old kit's
+      `lib/fido2/client.js` already proves the shape of
+- [ ] `hmac-secret` — which is also what would finally reach the unproven
+      null-dereference patch at `okcore.cpp:7645`, since nothing else touches
+      the HMAC challenge-response wipe path
+
+## Stage 5b — the rest of plane 1
+
+**Why:** half the vendor interface has never had a byte sent at it, and the
+slot fields are worse — two of twenty-eight.
+
+- [ ] `OKGETRESPONSE` first: every large payload depends on it
+- [ ] `OKGETPUBKEY` / `OKSIGN` / `OKDECRYPT` across the six key types
+- [ ] `OKSETPRIV` / `OKWIPEPRIV` beyond the backup-passphrase slot
+- [ ] `OKPING`, `OKHMAC`, `OKWEBAUTHN`
+- [ ] Slot fields beyond label and password: TOTP, the delay and next-key
+      chaining, wipe mode, key layout, type speed, the challenge modes
+- [ ] `OKFWUPDATE` last, and probably emulated-only — it is the one message
+      that can leave a key needing `okt flash`
 
 ## Stage 6 — the sections that need a display
 
