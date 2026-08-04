@@ -105,4 +105,38 @@ describe('slots and keyboard capture',
       assert.match(device.log.text, /Reading Password from EEPROM/);
       assert.match(device.log.text, /DECRYPTED STATE/);
     });
+
+    it('wipes the slot without taking the firmware down',
+      async ({ device, assert, signal }) => {
+        /*
+         * Regression test for a NULL dereference in wipe_slot().
+         *
+         * It used to end with okeeprom_eeset_2FAtype(0, slot) and
+         * yubikey_eeset_counter(0, slot) - literal zeros where both signatures
+         * take a uint8_t*, so NULL POINTERS, not the value zero
+         * (okcore.cpp:2259-2260). On an MK20DX256 address 0 is the vector
+         * table's initial stack pointer and readable, so the write stored 0x00
+         * by accident and the bug was invisible on hardware for years. The
+         * emulator leaves page zero unmapped precisely so a real NULL
+         * dereference faults, and it did.
+         *
+         * The wait past the acknowledgement is the point. wipe_slot() runs
+         * from the checkKey SoftTimer task, so the "Successfully wiped" reply
+         * comes back BEFORE the crashing line executes - a test that stopped
+         * at the reply would have passed against the broken firmware.
+         */
+        const since = device.mark(IFACE.VENDOR);
+        device.sendVendor({ msg: okmsg.MSG.OKWIPESLOT, slot: SLOT });
+
+        const reply = await device.waitHid(IFACE.VENDOR,
+          { since, match: /Successfully|Error/, timeoutMs: 15000, signal });
+        assert.ok(!/Error/.test(okmsg.text(reply)), okmsg.text(reply));
+
+        await device.sleep(2000, { signal });
+        assert.ok(!device.fatal,
+          `the device died wiping the slot: ${device.fatal && device.fatal.reason}`);
+
+        /* Still running loop(), not merely still enumerated. */
+        await device.waitResponsive({ signal });
+      });
   });

@@ -188,7 +188,7 @@ describe('backup and restore',
       const packets = backup.toRestorePackets(parsed.data);
       log(`restoring ${parsed.data.length} bytes in ${packets.length} packets`);
 
-      const since = device.mark(IFACE.VENDOR);
+      const before = device.generation;
       for (const payload of packets) {
         device.sendVendor({ msg: okmsg.MSG.OKRESTORE, payload });
         /* The device writes flash as the packets arrive; sending the whole
@@ -196,18 +196,18 @@ describe('backup and restore',
         await device.sleep(50, { signal });
       }
 
-      /* The device answers, or reboots, or both - so accept either as the end
-       * of the restore and let the next test decide whether it worked. */
-      await Promise.race([
-        device.waitHid(IFACE.VENDOR, { since, timeoutMs: 30000, signal }).catch(() => null),
-        device.log.waitFor(/Restore|restore/, { timeoutMs: 30000, signal }).catch(() => null),
-      ]);
-
+      /*
+       * The reboot IS the completion, and waiting for it is not optional.
+       * Probing before it lands reads a device that has not gone away yet and
+       * then loses it mid-answer - "locked" on the emulator, where the reboot
+       * is instant, and "unreachable" on a key, where re-enumeration takes
+       * real time. Same race, two faces.
+       */
+      await device.waitForReboot({ from: before, timeoutMs: 90000, signal });
       assert.ok(!device.fatal, 'the device died during the restore');
     });
 
     it('comes back locked, with its PINs intact', async ({ device, assert, signal }) => {
-      /* The restore reboots on its way out - that reboot IS its completion. */
       await device.waitReady({ signal });
 
       const after = await device.status({ signal });
