@@ -27,13 +27,13 @@ a section that does not exist yet.
 | ✅ | `13-fido2-standard-ceremony` — makeCredential/getAssertion | protocol | `11-fido2-ceremony` | now with no browser and no hidapi, and the signature verified in pure JS |
 | ⚠️ | `08-backup-hmac` — backup and HMAC settings (TC-13) | protocol | `10-backup-restore` | the **backup half is more than carried over**: the old kit called a full round trip untestable, and this does it. The HMAC settings half is not covered |
 | ⚠️ | `12-non-pqc-regression` — slot labels, classic ECC + RSA (TC-15) | protocol | `08-slot-keyboard` | labels and slot storage covered; classic ECC and RSA key handling is not |
-| ☐ | `01-pqc-keygen` — X-Wing keygen (TC-04) | protocol | — | needs `OKSETPRIV`/genkey and config mode → **stage 5b** |
-| ☐ | `02-pqc-slot` — PQC slot selection (TC-06) | protocol | — | **stage 5b** |
-| ☐ | `03-pqc-decrypt` — X-Wing encrypt/decrypt (TC-05) | protocol | — | needs `OKDECRYPT` → **stage 5b** |
-| ☐ | `04-pqc-no-device` — decrypt with no device (TC-07) | protocol | — | client-side behaviour; needs no device at all |
-| ☐ | `05-age-pqc-derived` — split custody, JS math | protocol | — | pure JS with no device in it — the easiest thing on this list to bring over |
-| ☐ | `10-fido2-xwing-derive` — X-Wing derive over FIDO2 (TC-09/10) | protocol | — | the plane-3 WebAuthn tunnel → **stage 5** |
-| ☐ | `17-nodejs-composite-pgp` — composite PGP-PQC over Node FIDO2 (TC-11) | protocol | — | plane 3, on top of the derive above |
+| ☐ | `01-pqc-keygen` — X-Wing keygen (TC-04) | cli | — | drives `age-plugin-onlykey --generate`, not the vendor protocol → **stage 3** |
+| ☐ | `02-pqc-slot` — PQC slot selection (TC-06) | cli | — | `age-plugin-onlykey --generate --slot N`; two of its three cases never touch the device |
+| ☐ | `03-pqc-decrypt` — X-Wing encrypt/decrypt (TC-05) | cli | — | drives `age` and `age-plugin-onlykey` |
+| ☐ | `04-pqc-no-device` — decrypt with no device (TC-07) | cli | — | the *absence* of a device is the test, but it still runs the plugin binary |
+| ☐ | `05-age-pqc-derived` — split custody, JS math | protocol | — | **no binaries, no device, no node-hid** — pure JS, and the easiest thing on this list |
+| ☐ | `10-fido2-xwing-derive` — X-Wing derive over FIDO2 (TC-09/10) | protocol | — | the old one went through hidapi; the plane-3 tunnel on our own CTAP2 port needs neither → **stage 5** |
+| ☐ | `17-nodejs-composite-pgp` — composite PGP-PQC over Node FIDO2 (TC-11) | cli | — | mixed: the FIDO2 half is plane 3 and reachable now, but it also shells to `onlykey-cli` |
 | ☐ | `06-lib-agent-ssh` — SSH derived-key export (TC-13) | cli | — | lib-agent finds the device through hidapi → **stage 3** |
 | ☐ | `07-lib-agent-gpg` — GPG derived identity (TC-13) | cli | — | **stage 3** |
 | ☐ | `11-derived-xwing-cli` — CLI derived X-Wing (TC-16/17) | cli | — | **stage 3** |
@@ -51,10 +51,25 @@ nw.js) and **app** (`test/04-app`, the OnlyKey desktop app).
 section 4 is the one part of this kit with no ancestor at all — which is also
 why it is last.
 
-**5 of 19 carried over, 2 of those partially.** The rest are not oversights:
-seven of them need the CLI or a browser, which are sections that do not exist
-yet, and five need vendor messages or the WebAuthn tunnel that nothing in the
-kit sends.
+**5 of 19 carried over, 2 of those partially.**
+
+The sections were checked against what each file actually EXECUTES, not what its
+name suggests, and that moved five rows. The whole PQC cluster - `01`, `02`,
+`03`, `04` - drives `age-plugin-onlykey` and `age` as external binaries rather
+than speaking the vendor protocol, so it is **cli** work and blocked on a kernel
+device node. `17-nodejs-composite-pgp` shells to `onlykey-cli` as well as using
+FIDO2, so it lands there too.
+
+What that leaves is lopsided, and worth knowing before picking anything up:
+
+| section | open | blocked on |
+|---|---|---|
+| protocol | 2 | nothing - `05` is pure JS, `10` needs the plane-3 tunnel we can now write |
+| cli | 8 | **stage 3** - the capability fix, then the section itself |
+| gui | 4 | stage 6, and a display |
+
+So "get all the tests over" is mostly a CLI problem, not a protocol one, and
+stage 3 is the thing standing in front of eight of the fourteen.
 
 ### New tests that replaced nothing
 
