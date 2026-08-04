@@ -224,9 +224,19 @@ python-onlykey can open it. Section 2 does not need a physical key — it needs 
 kernel device node, and the gadget is one. Small change, disproportionate
 consequence.
 
-- [ ] Detect the gadget (dummy_hcd + the OnlyKey descriptors) instead of
-      assuming from the adapter name
-- [ ] `kernel-hid` true when a node exists, whoever is behind it
+- [x] Detect the gadget instead of assuming from the adapter name
+      (`lib/gadget.js`): configfs, the UDC binding, the `/dev/hidg*` endpoints,
+      and the host-side `/dev/hidraw*` split into gadget and physical
+- [x] `kernel-hid` is now detected. On this machine it reports **false with the
+      reason**: the gadget is bound but owned by the pm2 daemon's pid, and
+      driving it would provision PINs inside the developer's own device.
+      `OKT_USE_RUNNING_GADGET=yes` opts in deliberately
+- [ ] **The ownership decision.** The gadget is a singleton, so section 2 cannot
+      have section 1's per-file isolation unless the kit owns it. Options: drive
+      whatever is there (no isolation, fights the GUI), or teach the kit's own
+      device host to raise the gadget bridge when it is free (isolation kept,
+      needs the daemon stopped). The second one is the one worth building
+- [ ] Then start section 2 against the emulator
 - [ ] Then start section 2 against the emulator: `onlykey-cli` through the
       venv, driven by visible start/stop test files rather than hooks. The CLI
       exposes **36 subcommands** - that list is the section-2 checklist
