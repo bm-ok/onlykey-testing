@@ -11,8 +11,8 @@ Counts are as of 2026-08-04, both adapters green:
 | sanity | 37 passed, 0 failed | same - it needs no device |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed |
 | section 2 | 23 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
-| section 3 | 12 passed, 0 failed (headless tier) | untried |
-| **whole tree** | **140 passed** | **94 passed, 23 skipped-with-reason** |
+| section 3 | 18 passed, 0 failed (headless tier) | untried |
+| **whole tree** | **146 passed** | **94 passed, 23 skipped-with-reason** |
 
 Hardware counts are from before the PQC work; section 2 cannot run there at all,
 so the only thing waiting on a key is a re-run of sections 0 and 1 against
@@ -145,7 +145,7 @@ the second fails the page is at fault rather than the device.
 |---|---|---|---|---|---|
 | `connect` | all of them | - | - | ✅ `00-fido2-lib` | - |
 | X-Wing maths (`age_pqc.js`) | age-derive | - | `15` | ✅ `01-age-pqc-parity` | ☐ |
-| `derive_public_key` / `derive_shared_secret` | password-generator, vault | - | `14` | ☐ | ☐ |
+| `derive_public_key` / `derive_shared_secret` | password-generator, vault | - | `14` | ✅ `02-derive` | ☐ |
 | `derive_xwing_recipient` / `derive_xwing_decap` | age-derive | - | `15` | ☐ | ☐ |
 | `composite_sign` / `composite_decrypt` | pgp-pqc | `17-nodejs` | `17-nwjs` | ☐ | ☐ |
 | `startEncryption` / `startDecryption` (`onlykey-pgp.js`) | encrypt, decrypt | `18`'s `pgp_env` half | `18` | ☐ | ☐ |
@@ -532,9 +532,14 @@ slot fields are worse — two of twenty-eight.
       and both are checked against the device
 - [x] `01-age-pqc-parity`: the web app's X-Wing maths against the same fixed
       vector, which found this kit's stale identity encoding
-- [ ] The rest of the build sheet above. `derive_public_key` /
-      `derive_shared_secret` is the next one worth doing - two pages depend on
-      it and it needs the device, so it exercises the shim properly
+- [x] `02-derive`: `derive_public_key` / `derive_shared_secret` through the
+      library, which the old kit could only reach through a browser. Needs the
+      device's `derivedkeymode` bit 3 set, which the kit does over its own
+      vendor interface (`OKSETSLOT` slot 1 field 21) rather than shelling to
+      onlykey-cli - reaching for the CLI would drag `client-access` in and take
+      the file out of CI
+- [ ] The rest of the build sheet above. The PGP layer is the biggest gap and
+      the one with a page at both ends (`encrypt`/`decrypt`, `pgp-pqc`)
 - [ ] Section 3's browser tier (`03-gui/10+`), the web app in nw.js
 - [ ] Section 4, the OnlyKey app — never driven from a harness at all
 - [ ] Services started and stopped by *visible* test files at the section
