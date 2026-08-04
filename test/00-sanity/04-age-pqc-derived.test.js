@@ -99,19 +99,56 @@ describe('derived X-Wing split custody', {
     assert.bytes(pqc.buildRecipient(pkX, mlkemSeed), pqc.buildRecipient(pkX, mlkemSeed));
   });
 
-  it('a derived identity carries its label and nothing else', async ({ assert }) => {
-    for (const label of ['age:personal', 'alice@example.com', 'work']) {
-      const identity = pqc.encodeIdentity(label);
-      assert.ok(identity.startsWith(pqc.DERIVED_PREFIX), `${identity} is a derived identity`);
+  it('encodes identities exactly as python-onlykey does', async ({ assert }) => {
+    /*
+     * Against python's own output, not against itself. This kit shipped the
+     * superseded encoding until the web app's age_pqc.js was put beside it:
+     * `AGE-PLUGIN-ONLYKEY-DERIVED-` plus unpadded base32, which python no
+     * longer emits and `age` rejects outright. A round-trip test passed
+     * happily the whole time, because a wrong encoder and its matching decoder
+     * agree with each other perfectly.
+     */
+    const v = JSON.parse(fs.readFileSync(VECTOR, 'utf8'));
 
-      const back = pqc.decodeIdentity(identity);
-      assert.equal(back.derived, true);
+    for (const [label, expected] of Object.entries(v.identities)) {
+      assert.equal(pqc.encodeIdentity(label), expected, `identity for ${JSON.stringify(label)}`);
+
+      const back = pqc.decodeIdentity(expected);
+      assert.ok(back, `${expected} did not decode as a derived identity`);
       assert.equal(back.label, label, 'the label survives the round trip');
     }
+  });
 
-    /* A slot identity is a different thing and must not decode as this one. */
-    assert.equal(pqc.decodeIdentity('AGE-PLUGIN-ONLYKEY-1QQQ'), null,
-      'a slot identity is not a derived identity');
+  it('uses the slot identity\'s prefix, and the marker byte to differ from it',
+    async ({ assert }) => {
+      /*
+       * The detail that looks like a bug and is not. A derived identity has the
+       * SAME human-readable part as a slot identity, because `age` picks which
+       * plugin binary to exec from that literal prefix - a tidier, distinct HRP
+       * would break dispatch entirely. What separates the two is the first
+       * payload byte, a 0xFF marker.
+       */
+      const identity = pqc.encodeIdentity('work');
+      assert.ok(identity.toLowerCase().startsWith(pqc.IDENTITY_HRP),
+        `${identity} does not carry the plugin's HRP`);
+
+      const { data } = pqc.bech32Decode(identity.toLowerCase());
+      assert.equal(data[0], pqc.DERIVED_MARKER, 'no derived marker in the payload');
+
+      /* A slot identity is the same shape without the marker, and must not be
+       * read as derived - the caller falls back to a slot decode. */
+      const slot = pqc.bech32Encode(pqc.IDENTITY_HRP, Buffer.from([101])).toUpperCase();
+      assert.equal(pqc.decodeIdentity(slot), null,
+        'a slot identity was read as a derived one');
+    });
+
+  it('encodes a recipient exactly as python-onlykey does', async ({ assert }) => {
+    const v = JSON.parse(fs.readFileSync(VECTOR, 'utf8'));
+    const recipient = pqc.encodeRecipient(Buffer.from(v.recipient, 'base64'));
+
+    assert.equal(recipient, v.recipient_for_vector, 'the encoded recipient');
+    assert.bytes(pqc.decodeRecipient(recipient), Buffer.from(v.recipient, 'base64'),
+      'the recipient round trip');
   });
 
   it('matches python-onlykey byte for byte, on a fixed vector', async ({ assert }) => {

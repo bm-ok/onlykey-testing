@@ -25,6 +25,13 @@ import json
 
 from onlykey.age_plugin import derived_xwing as dx
 from onlykey.age_plugin import xwing
+from onlykey.age_plugin.cli import encode_recipient
+
+# Labels whose encoded identities go in the vector. The identity encoding is
+# bech32 over [0xFF marker | utf-8 label] under the hrp "age-plugin-onlykey-",
+# and it is NOT guessable from the maths - it has to come from here, because a
+# derived identity and a slot identity share a prefix and differ by that marker.
+LABELS = ["age:personal", "alice@example.com", "work"]
 
 sk_x = bytes(range(32))            # a fixed X25519 "device" scalar
 mlkem_seed = bytes([0xAA] * 32)    # a fixed ML-KEM seed
@@ -53,4 +60,6 @@ print(json.dumps({
     "ct_x": b64(ct_x),
     "ss_x": b64(ss_x),
     "shared_secret": b64(ss_enc),
+    "identities": {label: dx.encode_identity(label) for label in LABELS},
+    "recipient_for_vector": encode_recipient(recipient),
 }, indent=2))

@@ -8,11 +8,11 @@ Counts are as of 2026-08-04, both adapters green:
 
 | | emulated | hardware |
 |---|---|---|
-| sanity | 35 passed, 0 failed | same - it needs no device |
+| sanity | 37 passed, 0 failed | same - it needs no device |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed |
 | section 2 | 23 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
-| section 3 | 6 passed, 0 failed (headless tier) | untried |
-| **whole tree** | **132 passed** | **94 passed, 23 skipped-with-reason** |
+| section 3 | 11 passed, 0 failed (headless tier) | untried |
+| **whole tree** | **139 passed** | **94 passed, 23 skipped-with-reason** |
 
 Hardware counts are from before the PQC work; section 2 cannot run there at all,
 so the only thing waiting on a key is a re-run of sections 0 and 1 against
@@ -130,6 +130,51 @@ answers in software, once solved with hardware.
 `onlykey-3rd-party.js` and `onlykey-api.js` are also where `OKGETPUBKEY`'s
 option bytes are written down - the thing `10-fido2-xwing-derive` is blocked on.
 So that row is a reading job either way, not a reverse-engineering one.
+
+### Section 3's build sheet: every feature, twice
+
+`onlykey-3rd-party.js` exposes nine calls, and each one is behind a page in
+`onlykey.github.io/src/plugins/`. The old kit tested several of these **twice** -
+once from Node against the library, once through the GUI - and TC-11 is the
+clearest case, with `17-nodejs-composite-pgp` and `17-nwjs-composite-pgp` being
+the same feature from both ends. That is the shape to keep: the headless test
+says the library works, the GUI test says the page wires it up, and when only
+the second fails the page is at fault rather than the device.
+
+| feature | page | old kit, Node | old kit, nw.js | `00-09` headless | `10+` GUI |
+|---|---|---|---|---|---|
+| `connect` | all of them | - | - | ✅ `00-fido2-lib` | - |
+| X-Wing maths (`age_pqc.js`) | age-derive | - | `15` | ✅ `01-age-pqc-parity` | ☐ |
+| `derive_public_key` / `derive_shared_secret` | password-generator, vault | - | `14` | ☐ | ☐ |
+| `derive_xwing_recipient` / `derive_xwing_decap` | age-derive | - | `15` | ☐ | ☐ |
+| `composite_sign` / `composite_decrypt` | pgp-pqc | `17-nodejs` | `17-nwjs` | ☐ | ☐ |
+| `startEncryption` / `startDecryption` (`onlykey-pgp.js`) | encrypt, decrypt | `18`'s `pgp_env` half | `18` | ☐ | ☐ |
+| age file format (`age_file.js`) | age-derive | - | - | ☐ | - |
+| composite blobs (`composite_pgp.js`) | pgp-pqc | `17-nodejs` | - | ☐ | - |
+| vault | vault | - | - | ☐ | ☐ |
+| chat | chat | - | - | - | ☐ |
+
+`age_file.js` is worth calling out: the web app implements the **age file format
+itself** - HPKE seal/open, stanza parsing, the header MAC, chunked STREAM - so
+it can be checked against the real `age` binary in both directions with no
+device at all. Nothing has ever tested it. Same for `vault`, which no kit has
+ever driven.
+
+Two things found while surveying, both already acted on:
+
+- **This kit's identity encoding was stale.** `lib/age-pqc.js` carried
+  `AGE-PLUGIN-ONLYKEY-DERIVED-` plus base32, inherited from the old kit;
+  python-onlykey and the web app both use bech32 over `[0xFF | label]` under the
+  hrp `age-plugin-onlykey-` - the SAME hrp a slot identity uses, because `age`
+  picks the plugin binary from that literal prefix and a tidier one would break
+  dispatch. A round-trip test could never have caught it, since a wrong encoder
+  and its matching decoder agree perfectly. Fixed, and now checked against
+  python's own output rather than against itself.
+- **`age_pqc.js` cannot be loaded in its own checkout.** It requires
+  `@noble/post-quantum`, `@noble/hashes` and `@noble/curves`, and
+  `onlykey-fido2/package.json` declares none of them - a browser build gets them
+  from a bundler. `webenv.loadPlain()` supplies them from this kit, which is why
+  the `@noble` versions here are load-bearing rather than incidental.
 
 ## Tests carried over
 
@@ -474,9 +519,11 @@ slot fields are worse — two of twenty-eight.
       library completes an OKCONNECT handshake over the in-process bus. Its
       tunnel encoder is checked byte for byte against `lib/device/tunnel.js`,
       and both are checked against the device
-- [ ] The rest of it: the PGP layer (`onlykey-pgp.js` - `startEncryption`,
-      `startDecryption`, the `_$mode` matrix), ECDH, and the derivations. See
-      the inventory above; the PGP layer is where the coverage actually is
+- [x] `01-age-pqc-parity`: the web app's X-Wing maths against the same fixed
+      vector, which found this kit's stale identity encoding
+- [ ] The rest of the build sheet above. `derive_public_key` /
+      `derive_shared_secret` is the next one worth doing - two pages depend on
+      it and it needs the device, so it exercises the shim properly
 - [ ] Section 3's browser tier (`03-gui/10+`), the web app in nw.js
 - [ ] Section 4, the OnlyKey app — never driven from a harness at all
 - [ ] Services started and stopped by *visible* test files at the section
