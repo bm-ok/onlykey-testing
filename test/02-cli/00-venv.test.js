@@ -53,39 +53,49 @@ describe('onlykey-cli',
         `expected one OnlyKey, hidapi sees ${buses.length}: ${JSON.stringify(buses)}`);
     });
 
-    it('reads the device state through python-onlykey', async ({ assert, signal }) => {
-      /*
-       * Deliberately not `onlykey-cli` the executable: its module-import-time
-       * OnlyKey() construction has a known enumeration race (the old kit hit
-       * `AttributeError: 'OnlyKey' object has no attribute '_hid'` and spent
-       * real time treating it as a device fault). Construct the client
-       * directly, the way the old kit's check_status.py ended up doing.
-       *
-       * A locked device answers nothing to set_time - the "INITIALIZED" string
-       * is a separate 1 Hz broadcast - so the read window has to be wider than
-       * that interval or it lands in the gap and reports nothing.
-       */
-      const result = await cli.run('python3', ['-c', [
-        'import time',
-        'from onlykey.client import OnlyKey',
-        'ok = OnlyKey()',
-        'ok.set_time(time.time())',
-        'print(ok.read_string(timeout_ms=2500))',
-        'ok.close()',
-      ].join('\n')], { timeoutMs: 30000, signal });
+    it('reports a locked device as locked, the same way the kit does',
+      async ({ device, assert, signal }) => {
+        /*
+         * python-onlykey RAISES on a locked device rather than returning a
+         * status string - read_bytes() turns the empty read into
+         * "OnlyKey is locked, enter PIN to unlock". Worth asserting rather than
+         * working around: it is the client's contract, and the kit reached the
+         * same conclusion by a completely different route (the once-a-second
+         * INITIALIZED broadcast on the vendor interface).
+         *
+         * Constructed directly rather than through the onlykey-cli executable,
+         * whose module-import-time OnlyKey() has a known enumeration race - the
+         * old kit lost real time treating it as a device fault.
+         */
+        const state = await device.status({ signal });
+        assert.equal(state.state, 'locked', 'the fixture should boot locked');
 
-      assert.equal(result.code, 0, `python-onlykey failed: ${result.stderr}`);
-      assert.match(result.stdout, /INITIALIZED|UNLOCKED/,
-        `unexpected device state: ${JSON.stringify(result.stdout)}`);
-    });
+        const result = await cli.run('python3', ['-c', [
+          'import time',
+          'from onlykey.client import OnlyKey',
+          'ok = OnlyKey()',
+          'ok.set_time(time.time())',
+          'try:',
+          '    print("READ:" + ok.read_string(timeout_ms=2500))',
+          'except RuntimeError as e:',
+          '    print("RAISED:" + str(e))',
+          'ok.close()',
+        ].join('\n')], { timeoutMs: 30000, signal });
 
-    it('agrees with section 1 about the firmware version',
+        assert.equal(result.code, 0, `python-onlykey crashed outright: ${result.stderr}`);
+        assert.match(result.stdout, /RAISED:.*locked/i,
+          `expected python-onlykey to report a locked device, got ${JSON.stringify(result.stdout)}`);
+      });
+
+    it('agrees with section 1 once the device is unlocked',
       async ({ device, assert, signal }) => {
         /*
          * The cross-check that justifies running a second client at all. The
-         * kit unlocked the device over its own in-process bus; python-onlykey
-         * asks the same device over USB and has to get the same answer. Two
-         * clients, two transports, one firmware.
+         * kit unlocks over its own in-process bus; python-onlykey asks the same
+         * device over USB and has to get the same answer. Two clients, two
+         * transports, one firmware - and a disagreement here would mean the
+         * firmware is right and the client is not, which is a sentence neither
+         * section can say alone.
          */
         const model = await device.unlock(PINS.primary, { signal });
 
@@ -98,8 +108,10 @@ describe('onlykey-cli',
           'ok.close()',
         ].join('\n')], { timeoutMs: 30000, signal });
 
-        assert.equal(result.code, 0, result.stderr);
-        assert.includes(result.stdout.trim(), model.replace(/\0/g, '').trim(),
+        assert.equal(result.code, 0, `python-onlykey failed: ${result.stderr}`);
+        assert.match(result.stdout, /UNLOCKED/,
+          `expected an unlocked device, got ${JSON.stringify(result.stdout)}`);
+        assert.includes(result.stdout.replace(/\s/g, ''), model.replace(/\0/g, '').trim(),
           'the CLI and the kit disagree about what the device just said');
       });
   });

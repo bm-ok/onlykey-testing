@@ -9,7 +9,8 @@ Counts are as of 2026-08-04, both adapters green:
 | | emulated | hardware |
 |---|---|---|
 | sanity | 29 passed, 0 failed | same - it needs no device |
-| section 1 | 68 passed, 0 failed, 3 skipped | 59 passed, 0 failed, 12 skipped-with-reason |
+| section 1 | 68 passed, 0 failed | 59 passed, 0 failed, 12 skipped-with-reason |
+| section 2 | 4 passed, 0 failed (gadget) | n/a - the kit's adapter holds the same nodes the CLI wants |
 
 ## Tests carried over
 
@@ -31,7 +32,7 @@ a section that does not exist yet.
 | ☐ | `01-pqc-keygen` — X-Wing keygen (TC-04) | cli | — | drives `age-plugin-onlykey --generate`, not the vendor protocol → **stage 3** |
 | ☐ | `02-pqc-slot` — PQC slot selection (TC-06) | cli | — | `age-plugin-onlykey --generate --slot N`; two of its three cases never touch the device |
 | ☐ | `03-pqc-decrypt` — X-Wing encrypt/decrypt (TC-05) | cli | — | drives `age` and `age-plugin-onlykey` |
-| ☐ | `04-pqc-no-device` — decrypt with no device (TC-07) | cli | — | the *absence* of a device is the test, but it still runs the plugin binary |
+| ☐ | `04-pqc-no-device` — decrypt with no device (TC-07) | cli | — | two-phase: generate an identity WITH a device, then prove `age -d` fails cleanly without one. The old kit needed a hand on the cable and mostly skipped; the gadget can unplug itself, so this finally runs unattended — see the `bus-detach` capability |
 | ☐ | `05-age-pqc-derived` — split custody, JS math | sanity | — | **no binaries, no device, no node-hid** — belongs in the sanity section, which now exists for exactly this |
 | ⚠️ | `10-fido2-xwing-derive` — X-Wing derive over FIDO2 (TC-09/10) | protocol | `12-webauthn-tunnel` | the tunnel it rides on is built and proven on both adapters; the X-Wing derive command itself still needs its option bytes worked out |
 | ☐ | `17-nodejs-composite-pgp` — composite PGP-PQC over Node FIDO2 (TC-11) | cli | — | mixed: the FIDO2 half is plane 3 and reachable now, but it also shells to `onlykey-cli` |
@@ -69,7 +70,7 @@ What that leaves is lopsided, and worth knowing before picking anything up:
 |---|---|---|
 | sanity | 1 | nothing - `05` is pure JS and the section is built |
 | protocol | 1 (partial) | nothing - `10`'s transport is done; the derive command is not |
-| cli | 8 | **stage 3** - the capability fix, then the section itself |
+| cli | 8 | nothing - the section runs; these are now just tests to write |
 | gui | 4 | stage 6, and a display |
 
 So "get all the tests over" is mostly a CLI problem, not a protocol one, and
@@ -245,9 +246,9 @@ consequence.
 - [x] `lib/cli.js` and a real `02-cli/00-venv.test.js`: enumeration is exactly
       one device, the state reads back through python-onlykey, and the CLI and
       section 1 must agree about the firmware version
-- [ ] **Unverified live** - it has only ever been seen to skip, because this
-      machine has both the daemon and a key attached. Needs one run with the
-      key unplugged and the daemon stopped
+- [x] **Verified live.** With the key unplugged and the daemon stopped, the kit
+      raised its own gadget, python-onlykey saw exactly one device, and all four
+      tests passed. Full run: sanity + protocol + cli = **101 passed, 0 failed**
 - [ ] Then the rest of the CLI rows: the PQC cluster, lib-agent SSH and GPG
 - [ ] Then start section 2 against the emulator: `onlykey-cli` through the
       venv, driven by visible start/stop test files rather than hooks. The CLI
