@@ -8,7 +8,7 @@ Counts are as of 2026-08-04, both adapters green:
 
 | | emulated | hardware |
 |---|---|---|
-| section 1 | 56 passed, 0 failed, 3 skipped | 47 passed, 0 failed, 12 skipped-with-reason |
+| section 1 | 62 passed, 0 failed, 3 skipped | 53 passed, 0 failed, 12 skipped-with-reason |
 
 ---
 
@@ -40,6 +40,10 @@ Counts are as of 2026-08-04, both adapters green:
       interface, verified against its own chained SHA256, restored, read back
 - [x] Regression test for the `wipe_slot()` null dereference
       (`libraries@cb1197e`)
+- [x] A real FIDO2 ceremony — register, authenticate, verify the signature in
+      pure JS — with the CTAP2 client protocol ported off
+      `@vincss-public-projects/fido2-client` and pointed at the kit's device
+      handle instead of its node-hid transport
 
 ---
 
@@ -158,22 +162,28 @@ all three and exercises one.
 
 ## Stage 5 — CTAP2, and the WebAuthn tunnel
 
-**Why:** `09-fido-ctaphid` covers `INIT` and `PING` — the transport. Both of the
-protocols riding on it are untested, and both are reachable from section 1
-because the FIDO interface is in-process.
+**Done:** `lib/device/cbor.js` (the CTAP2 canonical subset), `lib/device/ctap2.js`
+(framing, the KEEPALIVE loop, GET_INFO / MakeCredential / GetAssertion), and
+`11-fido2-ceremony.test.js` — passing on **both** adapters in about five
+seconds. The transport is the kit's device handle, so it needs no kernel node
+and stays in section 1, which is what makes it CI-able.
 
-- [ ] A CBOR encoder/decoder small enough to read — this is the missing
-      primitive under everything else here
-- [ ] `GET_INFO`: the cheapest real CTAP2 exchange, and it pins the versions
-      and extensions the firmware claims to support
-- [ ] MakeCredential with a real user-presence press
-- [ ] GetAssertion against that credential; verify the signature in pure JS
-- [ ] The tunnel: fabricate the `allowList` credential ID, read the response out
-      of the signature field. Start with `OKGETPUBKEY`, which the old kit's
-      `lib/fido2/client.js` already proves the shape of
-- [ ] `hmac-secret` — which is also what would finally reach the unproven
-      null-dereference patch at `okcore.cpp:7645`, since nothing else touches
-      the HMAC challenge-response wipe path
+- [x] A CBOR encoder/decoder small enough to read
+- [x] `GET_INFO` — versions, extensions, options, AAGUID
+- [x] MakeCredential with a real user-presence press, driven off the
+      KEEPALIVE(UP_NEEDED) the device sends while it waits for a finger
+- [x] GetAssertion against that credential, signature verified in pure JS
+      against the COSE key from the registration; plus the negative, that it
+      does *not* verify over a different challenge
+- [x] An unknown credential id is refused
+- [ ] `hmac-secret`, the extension this firmware advertises and nothing
+      exercises — also the only thing that would reach the unproven
+      null-dereference patch at `okcore.cpp:7645`
+- [ ] `credProtect`, the other advertised extension
+- [ ] Resident keys (`rk` is true), `credMgmt`, `CLIENT_PIN`, `RESET`
+- [ ] The plane-3 tunnel: fabricate the `allowList` credential ID, read the
+      response out of the signature field. `OKGETPUBKEY` first, whose shape the
+      old kit's `lib/fido2/client.js` already proves
 
 ## Stage 5b — the rest of plane 1
 
