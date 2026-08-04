@@ -9,8 +9,9 @@ Counts are as of 2026-08-04, both adapters green:
 | | emulated | hardware |
 |---|---|---|
 | sanity | 29 passed, 0 failed | same - it needs no device |
-| section 1 | 68 passed, 0 failed | 59 passed, 0 failed, 12 skipped-with-reason |
-| section 2 | 4 passed, 0 failed (gadget) | n/a - the kit's adapter holds the same nodes the CLI wants |
+| section 1 | 68 passed, 0 failed | 59 passed, 0 failed |
+| section 2 | 4 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
+| **whole tree** | **101 passed** | **88 passed, 15 skipped-with-reason** |
 
 ## Tests carried over
 

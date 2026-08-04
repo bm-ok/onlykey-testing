@@ -14,10 +14,27 @@ const { describe, it } = require('../../lib/harness');
 const { IMAGE_SIZES } = require('../../lib/config');
 
 describe('boot', { state: 'blank' }, () => {
-  it('reaches its boot banner', async ({ device, assert }) => {
-    await device.waitReady();
-    assert.equal(device.generation, 0, 'a fresh run starts at generation 0');
+  it('reaches its boot banner', async ({ device, assert, signal }) => {
+    await device.waitReady({ signal });
+
+    /*
+     * Deliberately NOT `generation === 0`.
+     *
+     * That assertion was here and passed for a while by luck. On the emulator a
+     * 'blank' device is an empty storage directory, so nothing has to happen to
+     * reach it; on hardware the fixture gets there by WIPING the key, and a
+     * wipe ends in CPU_RESTART(). So the generation is 1 before the first test
+     * runs - and only when the key was not already blank, which is why it
+     * passed against a freshly flashed one and failed the moment a previous run
+     * had provisioned it. An assertion that depends on what the last run left
+     * behind is not an assertion.
+     *
+     * What this file can honestly claim is that the device is up and talking.
+     * Counting generations is 02-restart's job, and it counts from a baseline
+     * rather than from zero for exactly this reason.
+     */
     assert.ok(device.log.text.length > 0, 'the device produced no debug output at all');
+    assert.ok(!device.fatal, `the device died during startup: ${device.fatal && device.fatal.reason}`);
   });
 
   it('backs its storage with two files of exactly the right size',
