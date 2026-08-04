@@ -18,9 +18,24 @@ node bin/okt.js run 01-protocol/07-unlock.test.js   # or one file
 echo $?                                  # the verdict
 ```
 
-No dependencies to install. The kit is CommonJS on the same Node that built the
-emulator addon - the device host loads that addon directly, and a mismatched ABI
-is not a failure worth debugging twice.
+Nothing has to be installed to run the kit. Everything in `package.json` is an
+**optional** dependency, and a file that needs one skips itself with a stated
+reason rather than failing:
+
+```sh
+npm install                  # both groups
+npm install --ignore-scripts # the pure-JS ones only, skipping node-hid's build
+```
+
+- `node-hid` - the hardware adapter. Nothing emulated needs it.
+- `@noble/post-quantum`, `@noble/hashes`, `@noble/curves` - the X-Wing maths in
+  `lib/age-pqc.js`. ML-KEM-768 has no `node:crypto` equivalent, so this is the
+  one piece of arithmetic in the kit that cannot come from the standard library.
+  Reported as the `xwing-math` capability.
+
+The kit is CommonJS on the same Node that built the emulator addon - the device
+host loads that addon directly, and a mismatched ABI is not a failure worth
+debugging twice.
 
 It finds the emulator at `../../emulator` relative to its own root, with
 `OKEMU_ROOT` overriding. If neither resolves it says which paths it tried.
@@ -230,11 +245,18 @@ Four limits of snapshot restore, none of them bugs:
 ## Sections
 
 ```
+test/00-sanity/     built    no device at all - the kit's own oracles
 test/01-protocol/   built    Node over the wire protocols
 test/02-cli/        stub     the CLI through the Python venv
 test/03-gui/        stub     the web app through nw.js
 test/04-app/        stub     the OnlyKey app, in its own nw.js
 ```
+
+The sanity section runs first and declares `device: false`, so the runner never
+starts a device host for it: it checks the kit's own pure-JS oracles - CBOR, the
+keystroke decoder, the vendor and CTAPHID framing, the backup format, the X-Wing
+maths - against known answers, in under a second. If those disagree with their
+answers, nothing the device sections go on to say can be trusted.
 
 The admission test for section 1 is not "is this protocol-level" but **"does
 this reach the device without a kernel device node"**. Sections 2-4 are not

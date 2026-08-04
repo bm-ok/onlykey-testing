@@ -8,10 +8,10 @@ Counts are as of 2026-08-04, both adapters green:
 
 | | emulated | hardware |
 |---|---|---|
-| sanity | 29 passed, 0 failed | same - it needs no device |
+| sanity | 35 passed, 0 failed | same - it needs no device |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed |
 | section 2 | 4 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
-| **whole tree** | **101 passed** | **88 passed, 15 skipped-with-reason** |
+| **whole tree** | **107 passed** | **94 passed, 15 skipped-with-reason** |
 
 ## Tests carried over
 
@@ -34,7 +34,7 @@ a section that does not exist yet.
 | ☐ | `02-pqc-slot` — PQC slot selection (TC-06) | cli | — | `age-plugin-onlykey --generate --slot N`; two of its three cases never touch the device |
 | ☐ | `03-pqc-decrypt` — X-Wing encrypt/decrypt (TC-05) | cli | — | drives `age` and `age-plugin-onlykey` |
 | ☐ | `04-pqc-no-device` — decrypt with no device (TC-07) | cli | — | two-phase: generate an identity WITH a device, then prove `age -d` fails cleanly without one. The old kit needed a hand on the cable and mostly skipped; the gadget can unplug itself, so this finally runs unattended — see the `bus-detach` capability |
-| ☐ | `05-age-pqc-derived` — split custody, JS math | sanity | — | **no binaries, no device, no node-hid** — belongs in the sanity section, which now exists for exactly this |
+| ✅ | `05-age-pqc-derived` — split custody, JS math | sanity | `04-age-pqc-derived` | **no binaries, no device, no node-hid.** Six tests in 80ms, including the fixed vector from python-onlykey's own `derived_xwing.py`, so this is cross-language agreement and not self-consistency. The three `@noble` packages are optional dependencies behind the `xwing-math` capability |
 | ⚠️ | `10-fido2-xwing-derive` — X-Wing derive over FIDO2 (TC-09/10) | protocol | `12-webauthn-tunnel` | the tunnel it rides on is built and proven on both adapters; the X-Wing derive command itself still needs its option bytes worked out |
 | ☐ | `17-nodejs-composite-pgp` — composite PGP-PQC over Node FIDO2 (TC-11) | cli | — | mixed: the FIDO2 half is plane 3 and reachable now, but it also shells to `onlykey-cli` |
 | ☐ | `06-lib-agent-ssh` — SSH derived-key export (TC-13) | cli | — | lib-agent finds the device through hidapi → **stage 3** |
@@ -56,7 +56,7 @@ desktop app).
 section 4 is the one part of this kit with no ancestor at all — which is also
 why it is last.
 
-**5 of 19 carried over, 2 of those partially.**
+**6 of 19 carried over, 2 of those partially.**
 
 The sections were checked against what each file actually EXECUTES, not what its
 name suggests, and that moved five rows. The whole PQC cluster - `01`, `02`,
@@ -69,13 +69,13 @@ What that leaves is lopsided, and worth knowing before picking anything up:
 
 | section | open | blocked on |
 |---|---|---|
-| sanity | 1 | nothing - `05` is pure JS and the section is built |
+| sanity | 0 | done |
 | protocol | 1 (partial) | nothing - `10`'s transport is done; the derive command is not |
 | cli | 8 | nothing - the section runs; these are now just tests to write |
 | gui | 4 | stage 6, and a display |
 
 So "get all the tests over" is mostly a CLI problem, not a protocol one, and
-stage 3 is the thing standing in front of eight of the fourteen.
+stage 3 is the thing standing in front of eight of the thirteen.
 
 ### New tests that replaced nothing
 
@@ -116,10 +116,14 @@ human watching could not have run them:
 - [x] `okt flash`, paced, because HalfKay NAKs a direct-attached burst
 - [x] A **sanity section** (`test/00-sanity`) that runs first and needs no
       device: the kit's own oracles - CBOR, the keystroke decoder, the vendor
-      and CTAPHID framing, the backup format - against known answers. 21 tests
-      in under a second. `device: false` in a file's metadata skips the device
-      host entirely
-- [ ] Port `05-age-pqc-derived`'s split-custody maths into it
+      and CTAPHID framing, the backup format, the X-Wing maths - against known
+      answers. 35 tests in under a second. `device: false` in a file's metadata
+      skips the device host entirely
+- [x] Port `05-age-pqc-derived`'s split-custody maths into it
+      (`lib/age-pqc.js`, `04-age-pqc-derived.test.js`). The fixed vector is
+      regenerable - `tools/gen-derived-xwing-vector.py` runs python-onlykey's
+      own reference on fixed inputs - so a future disagreement is three
+      implementations diverging, not a stale fixture
 
 ## Stage 1 — section 1, protocol ✅
 
@@ -217,6 +221,14 @@ somebody remembers to run it.
       not on log scraping
 - [ ] State plainly in the workflow that sections 2-4 are *impossible* there,
       not skipped for convenience
+
+The workflow now also installs the kit's own optional dependencies
+(`--ignore-scripts`, so node-hid does not spend minutes building a binding for a
+bus that is not there), runs the sanity section unconditionally, and asserts
+`xwing-math` alongside the rung. That assertion is the point: a missing package
+would not fail anything, it would skip the file with a reason and go green,
+which is exactly how a test stops existing without anyone noticing. Still
+untested, still `workflow_dispatch` only.
 
 ## Stage 3 — capability detection, and section 2 for free
 
@@ -330,8 +342,10 @@ slot fields are worse — two of twenty-eight.
 - [ ] Crypto vectors against derived and stored keys — dropped from the first
       cut because those paths need challenge-mode configuration that has not
       been worked out
-- [ ] `package-lock.json` is gitignored, but `node-hid` is now a declared
-      optional dependency; decide whether the lockfile should be tracked
+- [ ] `package-lock.json` is gitignored, but there are now four declared
+      optional dependencies - `node-hid` and the three `@noble` packages, and
+      the last of those is cryptographic maths the suite checks itself against.
+      Decide whether the lockfile should be tracked
 - [ ] Backup typing takes ~46s at the default TYPESPEED. Setting a faster type
       speed before the backup would cut the longest test roughly in half
 - [ ] Fold the flasher's pacing back into

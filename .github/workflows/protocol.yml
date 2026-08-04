@@ -91,21 +91,51 @@ jobs:
           npm install
           npm run build
 
-      # Assert the rung BEFORE running anything. If this is wrong, every crypto
-      # test is going to fail in a way that looks like a firmware bug.
-      - name: assert the rung
+      # The kit's own dependencies are all optional, and this is the step that
+      # decides whether the X-Wing tests RUN here or skip themselves politely.
+      #
+      # --ignore-scripts is deliberate: node-hid is in the same optional group
+      # and would run node-gyp rebuild, which wants libudev and takes minutes to
+      # produce a binding for a hardware adapter that cannot work on a runner
+      # with no USB. The @noble packages are pure JS and need no build step.
+      - name: install the kit's optional dependencies
+        working-directory: onlykey/onlykey-testing
+        run: npm install --ignore-scripts
+
+      # Assert BEFORE running anything, because both of these fail in ways that
+      # do not look like themselves.
+      #
+      # The rung: get it wrong and every crypto test fails looking like a
+      # firmware bug.
+      #
+      # xwing-math: get it wrong and nothing fails at all - the file skips
+      # itself with a reason, the run is green, and the one carried-over test
+      # this runner CAN do quietly did not happen. A skip is honest when a
+      # capability is genuinely out of reach here (no USB, no display); it is
+      # not honest for three pure-JS packages that just were not installed.
+      - name: assert the rung, and that the maths can run
         working-directory: onlykey/onlykey-testing
         run: |
           node bin/okt.js caps
           node -e '
             const { detect } = require("./lib/capabilities");
             const caps = detect({ adapter: "emulated" });
-            if (!caps.has("crypto")) {
-              console.error("wrong mmap rung: " + caps.why("crypto"));
-              process.exit(1);
+            for (const name of ["crypto", "xwing-math"]) {
+              if (!caps.has(name)) {
+                console.error("cannot run here - " + name + ": " + caps.why(name));
+                process.exit(1);
+              }
             }
             console.log("rung ok: " + caps.rung.name);
           '
+
+      # The sanity section first, and unconditionally: no device, no fixtures,
+      # a second of wall clock. If the kit's own oracles disagree with their
+      # known answers, nothing section 1 goes on to say about the device can be
+      # trusted anyway.
+      - name: run the sanity section
+        working-directory: onlykey/onlykey-testing
+        run: node bin/okt.js run 00-sanity
 
       - name: list what will run
         working-directory: onlykey/onlykey-testing
