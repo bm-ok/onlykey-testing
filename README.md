@@ -137,8 +137,10 @@ device.keystrokes / device.waitKeystrokes(text, opts)
 device.waitReady()                booted AND reading its input
 device.waitResponsive()           just the second half
 device.restart() / device.wipe({full})
+device.waitForReboot({from})      for commands that reboot as their completion
 device.status()                   {state: uninitialized|locked|unlocked, raw}
 device.unlock(pin)
+device.enterConfigMode(pin)       long-press 6, relock, unlock again
 device.setTime()                  RAM-only, rebased every boot
 device.generation / device.restarts / device.storageDir
 ```
@@ -163,6 +165,16 @@ All measured, all load-bearing, all commented at the point that depends on them:
 - **A rejected PIN does not clear the guess buffer** until ten keys have been
   entered, so the next attempt continues the old one. Reboot between attempts.
 - **CTAPHID PING is answered on any channel id**, allocated or not.
+- **A backup cannot be taken in config mode.** The backup branch requires
+  `!isfade`, and config mode holds the LED animation forever. Configure the
+  backup key in config mode, leave it, *then* hold button 1.
+- **A restore reboots as its completion**, and probing across that reboot reads
+  a stale ready flag - `locked` on the emulator where it is instant,
+  `unreachable` on a key where re-enumeration takes real time. Same race, two
+  faces. Use `waitForReboot()`.
+- **The LOCK keypress types Super+L at the host** before rebooting
+  (`lock_ok_and_screen`), so on a workstation it locks your screen. It is not a
+  cheaper relock than a reboot - it *ends* in `CPU_RESTART()`.
 
 ## Device state
 
@@ -178,6 +190,32 @@ key cannot have an image pushed into it.
 ```sh
 node bin/okt.js fixture initialized     # build or rebuild, before a run
 ```
+
+## Flashing a key
+
+```sh
+node bin/okt.js flash                   # the sibling builder's OnlyKey.cpp.hex
+node bin/okt.js flash path/to.hex       # or an explicit image
+```
+
+Tap the button on the key first, so it enumerates as the HalfKay bootloader
+(`16C0:0478`). The image goes out as 1089-byte reports written straight to
+`/dev/hidrawN` - no node-hid, no python.
+
+It **paces the writes**, which is the one thing it does differently from
+`onlykey-usb-hid-passthrough/tools/halfkay_flash.py`, and the reason it is here
+rather than borrowed. HalfKay programs a block after acknowledging the
+transfer and NAKs anything arriving while it is busy; the kernel reports that
+as `EPIPE`. Flashing *through* the Feather proxy never hits it, because the
+proxy holds each report for up to `PROXY_OUT_BLOCK_MS` waiting for a slot - it
+is the back-pressure. Attached directly there is none, and the original tool
+dies a few blocks in:
+
+```
+FAILED writing block at 0x001000 (block 4): [Errno 32] Broken pipe
+```
+
+15ms between blocks fixes it and costs three seconds on a 210-block image.
 
 Four limits of snapshot restore, none of them bugs:
 

@@ -5,7 +5,9 @@
  *   okt run [target...]     run a section, a directory or a single file
  *   okt list [target...]    enumerate what would run, without a device
  *   okt caps                what this host can reach, and why not
- *   okt fixture <state>     build (or rebuild) a cached device state
+ *   okt fixture <state>
+  okt flash [hexfile]  [--no-reboot] [--delay <ms>]     build (or rebuild) a cached device state
+ *   okt flash [hex]         program a key sitting in its HalfKay bootloader
  *
  * With no target, every section runs in order. Sections are numbered so that
  * order is visible in the tree rather than encoded somewhere else.
@@ -33,6 +35,7 @@ function usage() {
   okt list [target...]
   okt caps
   okt fixture <state>
+  okt flash [hexfile]  [--no-reboot] [--delay <ms>]
 
 targets are section names (01-protocol), directories, or single files.
 
@@ -49,6 +52,7 @@ function parse(argv) {
   const out = {
     command: argv[2] || 'help', targets: [], filter: null,
     timeoutMs: null, quiet: false, adapter: 'emulated',
+    reboot: true, delayMs: null,
   };
   for (let i = 3; i < argv.length; i++) {
     const a = argv[i];
@@ -56,6 +60,8 @@ function parse(argv) {
     else if (a === '--timeout') out.timeoutMs = parseInt(argv[++i], 10);
     else if (a === '--quiet') out.quiet = true;
     else if (a === '--hardware') out.adapter = 'hardware';
+    else if (a === '--no-reboot') out.reboot = false;
+    else if (a === '--delay') out.delayMs = parseInt(argv[++i], 10);
     else if (a === '--emulated') out.adapter = 'emulated';
     else if (a === '--help' || a === '-h') { usage(); process.exit(0); }
     else if (a.startsWith('-')) { console.error(`unknown option: ${a}`); process.exit(EXIT.RUNNER_ERROR); }
@@ -144,6 +150,27 @@ async function main() {
       break;
     }
 
+    case 'flash': {
+      const { flash, waitForKey } = require('../lib/flash');
+      const { DEFAULT_HEX } = require('../lib/paths');
+      const hex = args.targets[0] || DEFAULT_HEX;
+
+      if (!args.targets[0]) console.log(`using the sibling builder's output: ${hex}`);
+      const result = flash(hex, {
+        reboot: args.reboot,
+        delayMs: args.delayMs || undefined,
+        log: (m) => console.log(`  ${m}`),
+      });
+
+      if (args.reboot) {
+        console.log(waitForKey()
+          ? '  key is back on the bus'
+          : '  key did NOT come back on the bus - check it');
+      }
+      console.log(`flashed ${result.blocks} blocks via ${result.devPath}`);
+      break;
+    }
+
     case 'help':
     default:
       usage();
@@ -152,6 +179,13 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(`okt: ${err && (err.stack || err.message)}`);
+  /*
+   * The message, not the stack. Most of what surfaces here is an instruction
+   * to the operator - tap the bootloader button, plug the key in, point at a
+   * hex that exists - and a ten-frame trace buries it. OKT_DEBUG=1 brings the
+   * trace back for the times it is genuinely a bug in the kit.
+   */
+  console.error(`okt: ${err && err.message ? err.message : err}`);
+  if (process.env.OKT_DEBUG && err && err.stack) console.error(err.stack);
   process.exit(EXIT.RUNNER_ERROR);
 });
