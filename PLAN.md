@@ -8,8 +8,8 @@ Counts are as of 2026-08-04, both adapters green:
 
 | | emulated | hardware |
 |---|---|---|
-| sanity | 21 passed, 0 failed | same - it needs no device |
-| section 1 | 62 passed, 0 failed, 3 skipped | 53 passed, 0 failed, 12 skipped-with-reason |
+| sanity | 29 passed, 0 failed | same - it needs no device |
+| section 1 | 68 passed, 0 failed, 3 skipped | 59 passed, 0 failed, 12 skipped-with-reason |
 
 ## Tests carried over
 
@@ -33,7 +33,7 @@ a section that does not exist yet.
 | ☐ | `03-pqc-decrypt` — X-Wing encrypt/decrypt (TC-05) | cli | — | drives `age` and `age-plugin-onlykey` |
 | ☐ | `04-pqc-no-device` — decrypt with no device (TC-07) | cli | — | the *absence* of a device is the test, but it still runs the plugin binary |
 | ☐ | `05-age-pqc-derived` — split custody, JS math | sanity | — | **no binaries, no device, no node-hid** — belongs in the sanity section, which now exists for exactly this |
-| ☐ | `10-fido2-xwing-derive` — X-Wing derive over FIDO2 (TC-09/10) | protocol | — | the old one went through hidapi; the plane-3 tunnel on our own CTAP2 port needs neither → **stage 5** |
+| ⚠️ | `10-fido2-xwing-derive` — X-Wing derive over FIDO2 (TC-09/10) | protocol | `12-webauthn-tunnel` | the tunnel it rides on is built and proven on both adapters; the X-Wing derive command itself still needs its option bytes worked out |
 | ☐ | `17-nodejs-composite-pgp` — composite PGP-PQC over Node FIDO2 (TC-11) | cli | — | mixed: the FIDO2 half is plane 3 and reachable now, but it also shells to `onlykey-cli` |
 | ☐ | `06-lib-agent-ssh` — SSH derived-key export (TC-13) | cli | — | lib-agent finds the device through hidapi → **stage 3** |
 | ☐ | `07-lib-agent-gpg` — GPG derived identity (TC-13) | cli | — | **stage 3** |
@@ -68,7 +68,7 @@ What that leaves is lopsided, and worth knowing before picking anything up:
 | section | open | blocked on |
 |---|---|---|
 | sanity | 1 | nothing - `05` is pure JS and the section is built |
-| protocol | 1 | nothing - `10` needs the plane-3 tunnel we can now write |
+| protocol | 1 (partial) | nothing - `10`'s transport is done; the derive command is not |
 | cli | 8 | **stage 3** - the capability fix, then the section itself |
 | gui | 4 | stage 6, and a display |
 
@@ -268,9 +268,14 @@ and stays in section 1, which is what makes it CI-able.
       null-dereference patch at `okcore.cpp:7645`
 - [ ] `credProtect`, the other advertised extension
 - [ ] Resident keys (`rk` is true), `credMgmt`, `CLIENT_PIN`, `RESET`
-- [ ] The plane-3 tunnel: fabricate the `allowList` credential ID, read the
-      response out of the signature field. `OKGETPUBKEY` first, whose shape the
-      old kit's `lib/fido2/client.js` already proves
+- [x] The plane-3 tunnel: `lib/device/tunnel.js` plus
+      `12-webauthn-tunnel.test.js`, passing on both adapters. `OKCONNECT`
+      through a fabricated `allowList` credential ID returns the device's
+      X25519 handshake key and a status string that **matches what the vendor
+      interface reports** - two transports, two firmware paths, one answer
+- [ ] The vendor commands that ride it: `OKGETPUBKEY` answered
+      INVALID_COMMAND on a first attempt, so its option bytes need working out
+      from `lib/fido2/client.js`. That is what `10-fido2-xwing-derive` needs
 
 ## Stage 5b — the rest of plane 1
 
