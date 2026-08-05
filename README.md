@@ -58,8 +58,29 @@ presses, the device types whatever the slots hold, and the call waits for an
 Standing alone is not the same as being unaffected by what ran before. A test
 whose claim is "the device refuses this because config mode is off" passes in
 isolation and inverts when a predecessor turns config mode on - and config mode
-has no exit but a reboot. `--isolate` does not measure that direction, so the
-rule is to ESTABLISH the state you are asserting about rather than to inherit it.
+has no exit but a reboot. So there are two order faults, and they need different
+instruments:
+
+| fault | fails when | caught by |
+|---|---|---|
+| DEPENDS on an earlier test | run alone | `--isolate` |
+| BROKEN BY an earlier test | something runs before it | `--reverse` |
+
+`--reverse` runs a file's tests back to front in one ordinary session, so it
+costs one run rather than a boot per test:
+
+```sh
+node bin/okt.js run test/02-cli/13-cli-lifecycle.test.js --reverse
+```
+
+The two orders are complementary rather than redundant. If A leaves state that
+spoils B then the natural order already fails; if B leaves state that spoils A,
+only the reverse does. Reverse rather than shuffle so that a failure reproduces
+by rerunning the same command.
+
+Neither is a substitute for the rule: **establish the state you are asserting
+about**, rather than inheriting it. Both flags only tell you where that was not
+done.
 
 ### Which surface a test reads
 

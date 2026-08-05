@@ -103,7 +103,19 @@ describe('onlykey-cli, the stdin and life-cycle endpoints', {
   it('`password` is stored from stdin, and the device types it back',
     async ({ device, assert, signal, log, skip }) => {
       needCli({ skip });
-      await device.ensureUnlocked(PINS.primary, { signal });
+
+      /*
+       * Out of config mode, not merely unlocked, and this one was found by
+       * `--reverse` rather than by reasoning. In config mode a button press is
+       * config input rather than a slot press, so the device types NOTHING and
+       * the failure reads "the device typed "" in three presses" - which names
+       * the keyboard, not the mode.
+       *
+       * It passed alone and passed in file order, where this test runs second.
+       * Only reversed - after `backuppassphrase`, which ends in config mode -
+       * does it break. That is the whole reason --reverse exists.
+       */
+      await outOfConfigMode(device, signal);
 
       /* SURFACE: vendor - the write is acknowledged by name. */
       const { result, said } = await sent(device, ['setslot', '3a', 'password', 'x'],

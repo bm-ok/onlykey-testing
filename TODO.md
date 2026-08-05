@@ -78,8 +78,20 @@ and exit 0 when they dislike their arguments, so what the command did has to be
 visible from a second place - the kit's own vendor interface reading back what
 the CLI wrote, or the device's console saying what it received.
 
-**`--isolate` IS A GATE FOR EVERY NEW FILE FROM HERE ON.** A file does not land
-until `okt run <file> --isolate` is green. A single endpoint has to be
+**`--isolate` AND `--reverse` ARE BOTH GATES FOR EVERY NEW FILE.** A file does
+not land until `okt run <file> --isolate` and `okt run <file> --reverse` are
+both green. They catch opposite faults and neither substitutes for the other:
+
+| fault | fails when | caught by |
+|---|---|---|
+| the test DEPENDS on an earlier one | run alone | `--isolate` |
+| the test is BROKEN BY an earlier one | something runs before it | `--reverse` |
+
+Four times in this sweep a test was made wrong by what ran before it, and
+`--isolate` caught none of them - three were caught by the natural order and one
+by `--reverse` on its first use (`13-cli-lifecycle`'s `password`, which cannot
+type while a predecessor has left config mode on). `--reverse` costs one
+ordinary run, not a boot per test. A single endpoint has to be
 debuggable on its own with `okt run <file> --test <name>`, which only works if
 no test depends on what an earlier one did - so each test brings the device to
 the state it needs itself, through `device.ensureUnlocked()`, the idempotent

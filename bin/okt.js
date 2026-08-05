@@ -31,7 +31,8 @@ const { EXIT } = require('../lib/report');
 
 function usage() {
   console.log(`usage:
-  okt run [target...]  [--hardware] [--test <substring>] [--isolate] [--timeout <ms>] [--quiet]
+  okt run [target...]  [--hardware] [--test <substring>] [--isolate] [--reverse]
+                       [--timeout <ms>] [--quiet]
   okt list [target...]
   okt caps
   okt fixture <state>
@@ -47,6 +48,11 @@ accepted, for when one endpoint's name contains another's:
 --isolate runs each selected test in ITS OWN device session and reports any that
 cannot stand alone. It is the gate for new files, and costs a boot per test.
 
+--reverse runs each file's tests back to front in one ordinary session. It costs
+one run and catches the other order fault: a test that is BROKEN BY an earlier
+one passes alone and passes in file order, so --isolate cannot see it. Between
+the natural order, --reverse and --isolate, both directions are covered.
+
 --hardware drives a physical key over /dev/hidraw instead of the emulator. The
 emulator's USB gadget is excluded by default because it is indistinguishable
 from a key by VID/PID; OKT_ALLOW_GADGET=yes targets it deliberately, and
@@ -60,7 +66,7 @@ function parse(argv) {
   const out = {
     command: argv[2] || 'help', targets: [], filter: null,
     timeoutMs: null, quiet: false, adapter: 'emulated',
-    reboot: true, delayMs: null, isolate: false,
+    reboot: true, delayMs: null, isolate: false, reverse: false,
   };
   for (let i = 3; i < argv.length; i++) {
     const a = argv[i];
@@ -68,6 +74,7 @@ function parse(argv) {
     else if (a === '--timeout') out.timeoutMs = parseInt(argv[++i], 10);
     else if (a === '--quiet') out.quiet = true;
     else if (a === '--isolate') out.isolate = true;
+    else if (a === '--reverse') out.reverse = true;
     else if (a === '--hardware') out.adapter = 'hardware';
     else if (a === '--no-reboot') out.reboot = false;
     else if (a === '--delay') out.delayMs = parseInt(argv[++i], 10);
@@ -197,6 +204,7 @@ async function main() {
         quiet: args.quiet,
         timeoutMs: args.timeoutMs || undefined,
         testFilter: makeFilter(args.filter),
+        testOrder: args.reverse ? 'reverse' : 'natural',
       });
       process.exit(code);
       break;
