@@ -11,8 +11,8 @@ Counts are as of 2026-08-05, both adapters green, hardware on `libraries@83353cf
 | sanity | 37 passed, 0 failed | 37 passed, 0 failed |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed, 9 skipped |
 | section 2 | 23 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
-| section 3 | 57 passed, 0 failed (headless 50 + browser 7) | n/a - both tiers drive the emulator by design |
-| **whole tree** | **185 passed** | **96 passed, 9 skipped-with-reason** |
+| section 3 | 63 passed, 0 failed (headless 50 + browser 13) | n/a - both tiers drive the emulator by design |
+| **whole tree** | **191 passed** | **96 passed, 9 skipped-with-reason** |
 
 The key is flashed with `libraries@83353cf` and sections 0 and 1 pass on it.
 Section 2 cannot run against a physical key at all (`client-access`), and
@@ -147,7 +147,7 @@ the second fails the page is at fault rather than the device.
 |---|---|---|---|---|---|
 | `connect` | all of them | - | - | ✅ `00-fido2-lib` | - |
 | X-Wing maths (`age_pqc.js`) | age-derive | - | `15` | ✅ `01-age-pqc-parity` | ☐ |
-| `derive_public_key` / `derive_shared_secret` | password-generator, vault | - | `14` | ✅ `02-derive` | ☐ |
+| `derive_public_key` / `derive_shared_secret` | password-generator, vault | - | `14` | ✅ `02-derive` | ✅ `11-password-generator` |
 | `derive_xwing_recipient` / `derive_xwing_decap` | age-derive | - | `15` | ✅ `03-xwing-derive` | ☐ |
 | composite key generation | pgp-pqc | `17-nodejs` | - | ✅ `06-composite-key` | - |
 | `composite_sign` / `composite_decrypt` | pgp-pqc | `17-nodejs` | `17-nwjs` | **section 2** | ☐ |
@@ -568,9 +568,22 @@ slot fields are worse — two of twenty-eight.
       `ensure.js`-style cleanup, because a crashed browser can no longer orphan
       the server it never owned. `10-session` starts them, `19-stop` stops them
       and asserts the ports came free
-- [ ] The pages themselves (`03-gui/11..18`). Every feature they call is already
-      proven at the library level by the headless tier, so a failure there now
-      means the PAGE - which is the whole reason the tiers are split
+- [x] `11-password-generator`: the first test in the kit where the device call
+      goes THROUGH THE BROWSER - Chromium's own WebAuthn over the USB gadget -
+      and it cross-checks the page's answer against the same derivation done by
+      this kit over the in-process bus. Two clients, two transports, one device,
+      one secret
+- [ ] The rest of the pages (`03-gui/12..18`): age-derive, encrypt, decrypt,
+      pgp-pqc, vault. Every feature they call is already proven at the library
+      level, so a failure there now means the PAGE - which is the whole reason
+      the tiers are split
+- [ ] **`localhost`, never `127.0.0.1`.** WebAuthn refuses an IP address as an
+      rpId, so a page served from `127.0.0.1` dies with "SecurityError: This is
+      an invalid domain" before the device is contacted - and the pages swallow
+      their errors, so the only symptom is an output box that never fills. Worse,
+      the RPID is folded into the derivation, so a page on `localhost` derives a
+      DIFFERENT key from one on `onlyagent.app`: any cross-check has to ask the
+      kit for the same rpId the browser will use
 - [ ] **The ordering that is not optional:** the app's pages talk to the device
       as they load, and one opened before the OnlyKey is unlocked has its
       startup OKCONNECT time out - at which point Chromium raises a NATIVE
