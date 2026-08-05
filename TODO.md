@@ -5,6 +5,11 @@ the reasoning behind every row here; [README.md](README.md) is how to use what
 exists. This file is the order to do things in, and what each one needs.
 
 Ordered by what is unblocked and what unblocks the most, not by section number.
+
+**When a file lands, update its section's `last run` in [PLAN.md](PLAN.md)'s
+counts table** - the emulated and hardware columns each carry their own date,
+because they drift apart and a count with no date reads as current when it is
+not. Section 3's is the oldest and is flagged there as the one to re-measure.
 The two rules that shaped it:
 
 - **The remaining pages go last.** `13-pgp-pqc` in particular - everything under

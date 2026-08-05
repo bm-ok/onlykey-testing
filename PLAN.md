@@ -9,15 +9,33 @@ them, with what each one needs. Read that to pick something up; read this to
 understand what you picked up. When an item is finished, both files change: the
 box in TODO.md and the reasoning here.
 
-Counts are as of 2026-08-05, both adapters green, hardware on `libraries@83353cf`:
+Both adapters green, hardware on `libraries@83353cf`. **Each row carries when it
+was last measured**, because a count without a date is a claim about the past
+wearing the present tense - and the two adapters drift apart at different rates.
 
-| | emulated | hardware |
-|---|---|---|
-| sanity | 50 passed, 0 failed | 50 passed, 0 failed |
-| section 1 | 77 passed, 0 failed | 68 passed, 0 failed, 9 skipped |
-| section 2 | 101 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
-| section 3 | 72 passed, 0 failed (headless 50 + browser 22) | n/a - both tiers drive the emulator by design |
-| **whole tree** | **300 passed** | **118 passed, 9 skipped-with-reason** |
+| | emulated | last run | hardware | last run |
+|---|---|---|---|---|
+| sanity | 50 passed, 0 failed | 2026-08-05 | 50 passed, 0 failed | 2026-08-05 16:12Z |
+| section 1 | 77 passed, 0 failed | 2026-08-05 | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
+| section 2 | 101 passed, 0 failed (gadget) | 2026-08-05 | skipped - `client-access` | n/a |
+| section 3 | 72 passed, 0 failed (headless 50 + browser 22) | **before 2026-08-05** | n/a - both tiers drive the emulator by design | n/a |
+| **whole tree** | **300 passed** | | **118 passed, 9 skipped-with-reason** | 2026-08-05 |
+
+How each side was measured is not the same, and it matters when reading them:
+
+- **Hardware** is one sweep. Sections 0 and 1 were run end to end against the key
+  on 2026-08-05, finishing 16:24Z, and the numbers above are that run's.
+- **Emulated** is per file, as each landed. Sections 0, 1 and 2 were all touched
+  on 2026-08-05, so their totals are current, but no single tree-wide emulated
+  run produced them.
+- **Section 3 has not been re-run since before 2026-08-05** and its 72 is the
+  oldest number on this page. It is also the section most exposed to drift, since
+  its browser tier depends on nw.js and the web app checkout rather than on
+  anything this repo pins. Treat it as the one to re-measure first.
+
+Run directories under `runs/` carry the authoritative record - each has a
+`status.json` with `startedAt`, `finishedAt` and the counts, and `run.log`'s
+second line names the adapter.
 
 The key is flashed with `libraries@83353cf` and sections 0 and 1 pass on it -
 re-run 2026-08-05 after `13-large-response` and `14-stored-keys` landed, and both
