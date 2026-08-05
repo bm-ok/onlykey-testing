@@ -307,13 +307,23 @@ branch each:
 
       First file to send `OKSETPRIV` and `OKSIGN` by hand rather than through
       onlykey-cli or the web app's library.
-- [ ] **`OKGETPUBKEY` / `OKSIGN` / `OKDECRYPT`** across the six key types
-      (ed25519, P256, secp256k1, curve25519, ML-KEM-768, X-Wing). What exists
-      now is the DERIVED branches only - `OKGETPUBKEY` at slot 132
-      (`08-lib-agent-ssh`) and at slot 128 with `OKDECRYPT` (`07-derived-xwing`).
-      Both dispatch on the slot number, so the stored-slot branches - the ones
-      that read a key out of flash, where all six key types live - are still
-      untouched by either message.
+- [x] **`OKGETPUBKEY` / `OKSIGN` / `OKDECRYPT`** across the six key types →
+      `01-protocol/14-stored-keys`, 6 tests in 90s, `--isolate` 6/6 and
+      `--reverse` green. Section 1, so the whole file is hardware-capable.
+
+      Every type checked against something that is not the device: ed25519,
+      nist256p1 and secp256k1 pubkeys and signatures against node:crypto,
+      curve25519 against node:crypto's X25519, and the two PQC types against
+      @noble's encapsulation. Signatures are also checked NOT to verify over a
+      different message.
+
+      **This clears the challenge-mode blocker** - see the row below.
+
+      Two findings. A PQC keygen has a different completion signal from a stored
+      key: handing one over answers "Successfully set ECC Key", GENERATING one
+      answers with the PUBLIC KEY itself (1184 / 1216 bytes) and no text at all.
+      And the key the keygen returns is asserted equal to the key read back out
+      of flash after a reboot, so generation, storage and retrieval agree.
 - [x] ~~**`OKPING`, `OKHMAC`, `OKWEBAUTHN`**~~ - **not testable, not defects.**
       `OKPING` has no handler and no reference anywhere. `OKHMAC` and
       `OKWEBAUTHN` are internal tags (`packet_buffer_details[0] = OKWEBAUTHN`),
@@ -521,9 +531,27 @@ Tracked here so they do not get lost, but they are not coverage.
 - [ ] **Track `package-lock.json`?** Currently gitignored, with four declared
       optional dependencies - `node-hid` and three `@noble` packages, the last of
       which is cryptographic maths the suite checks itself against.
-- [ ] **Crypto vectors against derived and stored keys** - dropped from the first
-      cut because those paths need challenge-mode configuration that has not been
-      worked out.
+- [x] **Crypto vectors against derived and stored keys** - the challenge-mode
+      configuration is worked out, and it is two facts:
+
+      1. **`stored_key_challenge_mode` = 1 turns the three-digit challenge into a
+         single press of ANY button.** `done_process_packets()` sets
+         `CRYPTO_AUTH = 3` instead of computing the digits, and the press handler
+         in `OnlyKey.ino` has a clause - `(stored_key_challenge_mode==1 && isfade
+         && packet_buffer_details[0])` - that goes straight to `CRYPTO_AUTH = 4`
+         without checking which button was pressed. `derived_key_challenge_mode`
+         has the identical clause.
+      2. **It must be sent as the BYTE 1, not the character `'1'`.** The clause
+         tests `== 1` exactly. The string puts 0x31 in EEPROM, which is truthy
+         enough for `done_process_packets()` to set `CRYPTO_AUTH = 3` - so the
+         device primes and looks like it is waiting for one press - and then no
+         press satisfies the clause and the operation answers "Error incorrect
+         challenge". That is almost certainly why the row read as unworkable.
+
+      Worth knowing: `03-gui/02-derive` sets the DERIVED mode with `String(8)` =
+      0x38, and it works only because the tunnelled path tests
+      `is_bit_set(mode, 3)` and 0x38 happens to have bit 3 set. Right by
+      accident, and it would not survive being changed to another value.
 - [ ] **Backup typing takes ~46s** at the default TYPESPEED. Setting a faster
       type speed before the backup would roughly halve the longest test.
 - [ ] **Fold the flasher's pacing back** into

@@ -386,7 +386,26 @@ stubs say so, with a reason, every run.
 - **The GitHub Actions workflow.** On a hosted runner it comes down to
   `sudo sysctl -w vm.mmap_min_addr=4096`, three source checkouts, building the
   addon, asserting the rung, and running section 1.
-- **Crypto vectors** against derived and stored keys. Those paths need
-  challenge-mode configuration that has not been worked out yet; the AES-GCM
-  round trip is covered end to end by `08-slot-keyboard.test.js` in the
-  meantime.
+### Challenge modes, and how to use a stored key without three presses
+
+A crypto operation on a stored or derived key normally demands a three-digit
+challenge: `done_process_packets()` hashes the packet and picks
+`Challenge_button1/2/3` from it, and the operation waits for all three.
+
+Setting `stored_key_challenge_mode` (slot field 22) or
+`derived_key_challenge_mode` (field 21) to **1** replaces that with a single
+press of **any** button. `done_process_packets()` sets `CRYPTO_AUTH = 3` instead
+of computing digits, and the press handler in `OnlyKey.ino` has a clause -
+`(stored_key_challenge_mode==1 && isfade && packet_buffer_details[0])` - that
+goes straight to `CRYPTO_AUTH = 4` without checking which button arrived.
+
+**Send it as the byte `1`, not the character `'1'`.** That clause tests `== 1`
+exactly. The string puts `0x31` in EEPROM, which is truthy enough for
+`done_process_packets()` to take the no-digits branch - so the device primes and
+appears to be waiting for one press - and then no press satisfies the clause and
+the operation answers `Error incorrect challenge`.
+
+`01-protocol/14-stored-keys.test.js` uses this to drive `OKGETPUBKEY`, `OKSIGN`
+and `OKDECRYPT` against all six key types, so **crypto vectors against stored
+keys are built**; the derived paths are covered by `02-cli/07-derived-xwing` and
+`02-cli/15-age-file-interop`.

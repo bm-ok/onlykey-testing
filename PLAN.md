@@ -14,10 +14,10 @@ Counts are as of 2026-08-05, both adapters green, hardware on `libraries@83353cf
 | | emulated | hardware |
 |---|---|---|
 | sanity | 50 passed, 0 failed | 50 passed, 0 failed |
-| section 1 | 71 passed, 0 failed | 59 passed, 0 failed, 9 skipped + 3 untried |
+| section 1 | 77 passed, 0 failed | 59 passed, 0 failed, 9 skipped + 3 untried |
 | section 2 | 101 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
 | section 3 | 72 passed, 0 failed (headless 50 + browser 22) | n/a - both tiers drive the emulator by design |
-| **whole tree** | **294 passed** | **96 passed, 9 skipped-with-reason** |
+| **whole tree** | **300 passed** | **96 passed, 9 skipped-with-reason** |
 
 The key is flashed with `libraries@83353cf` and sections 0 and 1 pass on it.
 Section 2 cannot run against a physical key at all (`client-access`), and
@@ -359,8 +359,7 @@ app speak.
 
 | | messages |
 |---|---|
-| **covered (11)** | `OKPIN` `OKPINSD` `OKPINSEC` `OKCONNECT` `OKGETLABELS` `OKSETSLOT` `OKWIPESLOT` `OKSETPRIV` `OKWIPEPRIV` `OKRESTORE` `OKSIGN` |
-| **one branch each (2)** | `OKGETPUBKEY` `OKDECRYPT` |
+| **covered (13)** | `OKPIN` `OKPINSD` `OKPINSEC` `OKCONNECT` `OKGETLABELS` `OKSETSLOT` `OKWIPESLOT` `OKSETPRIV` `OKWIPEPRIV` `OKRESTORE` `OKSIGN` `OKGETPUBKEY` `OKDECRYPT` |
 | **not covered (1)** | `OKFWUPDATE` |
 | **NOT A MESSAGE (4)** | `OKGETRESPONSE` `OKPING` `OKHMAC` `OKWEBAUTHN` |
 
@@ -384,14 +383,15 @@ testing. The dispatcher's `default:` hands any unrecognised vendor message id to
 `recv_fido_msg()`, so an unknown id on the vendor interface is interpreted as
 CTAPHID data.
 
-The two middle rows are a real distinction rather than a softened "no". Both
-messages dispatch on the slot number, and only the two RESERVED derivation
-slots have ever been sent: `OKGETPUBKEY` reaches `RESERVED_KEY_DERIVATION`
-(132, ed25519, `08-lib-agent-ssh`) and `RESERVED_KEY_WEB_DERIVATION` (128,
-X-Wing, `07-derived-xwing`), and `OKDECRYPT` only the latter. **The stored-slot
-branches - the ones that read a key out of flash - have never been reached by
-either message**, which is where the six key types live and where a bug would
-sit on real user data rather than on a derivation.
+`OKGETPUBKEY`, `OKSIGN` and `OKDECRYPT` dispatch on the SLOT number, and the
+stored-slot branches - the ones that read a key out of flash, where all six key
+types live - are covered by `01-protocol/14-stored-keys`, which drives all three
+messages against ed25519, nist256p1, secp256k1, curve25519, ML-KEM-768 and
+X-Wing. The derivation slots are covered separately: 132 by `08-lib-agent-ssh`
+and 128 by `07-derived-xwing` and `15-age-file-interop`.
+
+**Every message in plane 1 is now covered except `OKFWUPDATE`**, which is gated
+`emulated` and driven only to its interlocks, deliberately - see TODO.
 
 Underneath `OKSETSLOT` sit **29 dispatched cases** and **6 key types** (ed25519,
 P256, secp256k1, curve25519, ML-KEM-768, X-Wing). Not 28 - that was the size of
