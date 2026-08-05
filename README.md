@@ -153,6 +153,61 @@ matters directly for the production descriptor work in
 The same shadowing applies to every `.c`/`.h` OnlyKey ships. Before editing a
 firmware source, check whether area 2 has its own copy.
 
+### `STD_VERSION`: there are two firmwares, and the kit only knows one
+
+`STD_VERSION` is not a build flag - it is a `#define` in the sources, and
+**undefining it produces a different product**: the International Travel
+Edition, which exists because some countries do not permit encrypted devices.
+That is a legal constraint rather than a security feature, and the constant it
+selects says so in its own comment:
+
+```c
+#define NONENCRYPTEDPROFILE 2 //International Travel Edition or Plausible Deniability
+```
+
+`setup()` assigns it at boot (`OnlyKey.ino:259-263`):
+
+```c
+#ifdef STD_VERSION
+  profilemode = STDPROFILE1;
+#else
+  profilemode = NONENCRYPTEDPROFILE;
+#endif
+```
+
+So **plausible deniability is the travel build's property, not the second
+profile's.** `01-protocol/20-second-profile` is about the STD build, where the
+second profile's separation is by slot numbering - which is what it is
+documented to be, not a boundary that failed.
+
+**It is defined in TWO places, and that is the trap** - the same shape as
+`usb_desc.h` above, and for the same reason: both are hand-edited variants the
+build cannot tell apart.
+
+| | file | line |
+|---|---|---|
+| 1 | `libraries/onlykey/onlykey.h` | 84 |
+| 2 | `OnlyKey-Firmware/OnlyKey/OnlyKey.ino` | 82 |
+
+Both carry the comment "Define for STD edition firmare, undefine for IN TRVL
+edition firmware". Comment out one and not the other and you get a half-travel
+build: the translation units that include `onlykey.h` take one side of every
+guard and the sketch takes the other. Worth re-measuring rather than trusting
+this count, since the sources move:
+
+```sh
+grep -rhcE '#(ifdef|ifndef) *STD_VERSION' libraries/onlykey libraries/fido2 \
+  OnlyKey-Firmware --include=*.cpp --include=*.h --include=*.ino
+```
+
+Measured 2026-08-05: **76 guard directives - 72 `#ifdef`, 4 `#ifndef` - across 8
+files**, 49 of them in `okcore.cpp` alone.
+
+**Everything in this kit assumes `STD_VERSION`.** Both fixtures, every state
+module and every test. The travel edition has never been compiled or run here,
+so any behaviour reached only when `profilemode == NONENCRYPTEDPROFILE` is
+untested by construction rather than by omission - see TODO.
+
 ## The verdict
 
 The exit code says what kind of problem it is without reading anything else:

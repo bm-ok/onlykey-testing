@@ -16,17 +16,19 @@ wearing the present tense - and the two adapters drift apart at different rates.
 | | emulated | last run | hardware | last run |
 |---|---|---|---|---|
 | sanity | 50 passed, 0 failed | 2026-08-05 17:35Z | 50 passed, 0 failed | 2026-08-05 16:12Z |
-| section 1 | 103 passed, 0 failed | 2026-08-05 18:00Z | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
+| section 1 | 108 passed, 0 failed | 2026-08-05 18:23Z | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
 | section 2 | 101 passed, 0 failed (gadget) | 2026-08-05 17:35Z | skipped - `client-access` | n/a |
 | section 3 | 72 passed, 0 failed (headless 50 + browser 22) | 2026-08-05 17:35Z | n/a - both tiers drive the emulator by design | n/a |
-| **whole tree** | **326 passed, 0 failed, 1 skipped** | 2026-08-05 18:00Z | **118 passed, 9 skipped-with-reason** | 2026-08-05 16:24Z |
+| **whole tree** | **331 passed, 0 failed, 1 skipped** | 2026-08-05 18:23Z | **118 passed, 9 skipped-with-reason** | 2026-08-05 16:24Z |
 
-**Section 1's 103 is the 17:35Z sweep's 96 plus `19-rsa-keys`' 7, measured on
-its own at 18:00Z** - so it is arithmetic again for one file, which is what the
-warning below is about. The 7 are green three ways: natural order, `--isolate`
-7/7, and `--reverse`. Neither adapter has run the whole tree since, and the
-hardware column has not seen this file at all - it is section 1, so it is
-hardware-capable, but nothing has been plugged in.
+**Section 1's 108 is the 17:35Z sweep's 96 plus three new files measured on their
+own** - `19-rsa-keys` 7, `20-second-profile` 3, `21-self-destruct` 2 - so it is
+arithmetic again, which is what the warning below is about. All twelve are green
+three ways each: natural order, `--isolate` and `--reverse`. Neither adapter has
+run the whole tree since, and **the hardware column has not seen any of the
+three**. All three are section 1 and therefore hardware-capable, but
+`21-self-destruct` will SKIP on a key unless somebody sets
+`OKT_ALLOW_FULL_WIPE=yes`, which is the gate working rather than a gap.
 
 **Both columns were single sweeps as of 17:35Z**, which they had not been before:
 
@@ -670,16 +672,42 @@ consequence.
       than in section 1 - and it is worth having *as well as* the hand-rolled
       section-1 path, because it tests what a real client does
 
-## Stage 4 — the PINs we set every run and never test
+## Stage 4 — the PINs we set every run and never test ✅
 
-**Why:** `PINS.secondary` and `PINS.selfDestruct` appear exactly once each in
-the suite, both in `07-unlock` as *negative* assertions. Every run provisions
-all three and exercises one.
+**Why:** `PINS.secondary` and `PINS.selfDestruct` appeared exactly once each in
+the suite, both in `07-unlock` as *negative* assertions. Every run provisioned
+all three and exercised one. Both are now entered.
 
-- [ ] Second profile: unlock into it, confirm it is a different profile with
-      different slot data, confirm it does not see profile 1's
-- [ ] Self-destruct: emulated only — it factory-resets, which on a key means a
-      reflash. Gate it on a capability that says exactly that
+- [x] Second profile → `01-protocol/20-second-profile`, 3 tests in 39s, both
+      gates green. It IS a different profile with different slot data -
+      `gen_press()` adds 12 and `gen_hold()` 12 + 6, so its buttons address
+      13..24 and can never address 1..12 - and it DOES see profile 1's, which is
+      the third thing this row asked to confirm and the opposite of what ships.
+      Both profiles unwrap ONE stored master profile key, deliberately, so that a
+      PIN change need not re-derive it. Not a failed boundary: plausible
+      deniability is the travel BUILD's property (see below), so separation by
+      slot numbering is what the second profile is documented to be. Pinned, and
+      the test fails if that ever changes
+- [x] Self-destruct → `01-protocol/21-self-destruct`, 2 tests in 63s, gated on
+      `full-wipe` - the existing capability, reused because its reason string
+      already names the cost: `factorydefault()` erases the firmware hash and
+      forces the bootloader, so a physical key needs reflashing. The device
+      answers `UNLOCKED, NO PIN SET` afterwards and the primary PIN unlocks
+      nothing. The second test re-provisions with the same three PINs and shows
+      the old secret still cannot come back, because re-provisioning generates a
+      new random profile key - and it carries a control, because after a wipe the
+      slot types NOTHING, which is equally what a discarded press produces
+- [ ] **The International Travel Edition — deferred until the kit is complete**,
+      by decision. `STD_VERSION` is a `#define` in the sources rather than a build
+      flag, so the travel edition is a comment-out and a rebuild - **two lines**
+      (`libraries/onlykey/onlykey.h:84` and `OnlyKey.ino:82`), and doing one gives
+      a half-travel build. File it beside `usb_desc.h`'s commented-out production
+      block: both are hand-edited source variants the build cannot distinguish.
+      The approach is a DIFF of this suite across both builds rather than a second
+      suite - 76 guard directives, and what matters is which behaviours change,
+      which two separate suites would never compare. Everything here assumes
+      `STD_VERSION`, so `profilemode == NONENCRYPTEDPROFILE` is untested by
+      construction. See TODO and README
 
 ## Stage 5 — CTAP2, and the WebAuthn tunnel
 

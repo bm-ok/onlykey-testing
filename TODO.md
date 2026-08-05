@@ -23,17 +23,26 @@ implies:
 
 | | what | why it is next |
 |---|---|---|
-| 1 | the two never-tested PINs (§3) | provisioned on every single run and exercised once, negatively |
-| 2 | `loadpqc` / `loadkey` accepting paths (§1) | the last section-2 row; a wiring job, the pieces exist |
+| 1 | `loadpqc` / `loadkey` accepting paths (§1) | the last section-2 row; a wiring job, the pieces exist |
+| 2 | HMAC settings (§2) | the half of old `08-backup-hmac` never covered; the last section-1 carry-over |
 | 3 | the remaining pages (§4) | needs a browser and a human for `13-pgp-pqc` |
 | 4 | section 4, the app (§5) | no ancestor anywhere; genuinely last |
+| — | the International Travel Edition (§3) | DEFERRED until the kit is complete, by decision - a second BUILD, diffed against this one |
 
-**RSA key handling came off the top of this table** on 2026-08-05 →
-`01-protocol/19-rsa-keys`, 7 tests in 104s, `--isolate` 7/7 and `--reverse`
-green. Every key kind the firmware stores now has coverage - the six ECC
-`KEYTYPE_*` values by `14-stored-keys` and RSA, which is not one of them, by this
-file. And `18-gui-encrypt-decrypt`'s prerequisite is met: the pair of slots
-`onlykey-pgp.js` hardcodes is loaded, used and asserted about. See §2.
+**Three rows came off the top of this table** on 2026-08-05:
+
+- **RSA key handling** → `01-protocol/19-rsa-keys`, 7 tests in 104s, `--isolate`
+  7/7 and `--reverse` green. Every key kind the firmware stores now has coverage
+  - the six ECC `KEYTYPE_*` values by `14-stored-keys` and RSA, which is not one
+  of them, by this file. `18-gui-encrypt-decrypt`'s prerequisite is met: the pair
+  of slots `onlykey-pgp.js` hardcodes is loaded, used and asserted about. See §2.
+- **The second profile** → `01-protocol/20-second-profile`, 3 tests in 39s, both
+  gates green. See §3.
+- **Self-destruct** → `01-protocol/21-self-destruct`, 2 tests in 63s, gated on
+  `full-wipe`. See §3.
+
+So **both PINs this kit provisioned on every run and had never entered are now
+entered**, and §3's remaining row is a deferred second BUILD rather than a test.
 
 **When a file lands, update its section's `last run` in [PLAN.md](PLAN.md)'s
 counts table.** The emulated and hardware columns carry separate dates because
@@ -321,6 +330,8 @@ Checked while writing `19-rsa-keys`, all in `libraries/onlykey`:
 | `OKGETPUBKEY` takes any field on an RSA slot | **NO** - `okcrypto_getpubkey()` takes the RSA branch on `buffer[5] < 5 && !buffer[6]`. Any other field falls through to the ECC branch and reads a slot that does not exist |
 | the key-load and operation chunk framings are the same | **NO, and this is the trap.** The KEY going in carries the **type byte** in `buffer[6]` on all five reports and `rsa_priv_flash()` copies a fixed 57 bytes from each, counting its own way to 256 with a global offset. The OPERATION payload carries the **continuation marker** - `0xFF` while more follows, the final chunk's length on the last. Swapping them gives a 255-byte packet or "Error invalid RSA type" |
 | `OKSIGN` takes any digest on an RSA slot | **NO** - exactly 28, 32, 48 or 64 bytes, and the length PICKS THE HASH: `rsa_sign()` maps them onto SHA-224/256/384/512. And it is refused AFTER the confirmation, so the press is spent on a request the device was always going to refuse |
+| the second profile cannot see profile 1's slot data | **FALSE** - both profiles unwrap the same stored master profile key, so an AES-GCM decrypt succeeds across the boundary and the firmware prints the plaintext doing it. Deliberate ("Using new method, PIN changes supported"), and NOT a failed boundary: plausible deniability is the travel BUILD's property, not the second profile's. Pinned by `20-second-profile` |
+| `NONENCRYPTEDPROFILE` is a runtime mode of the second profile | **NO, it is primarily a BUILD** - the `#else` of `#ifdef STD_VERSION` in `setup()` (OnlyKey.ino:259-263), the International Travel Edition, which exists because some countries do not permit encrypted devices. A legal constraint, not a security feature. Everything this kit has assumes `STD_VERSION`; see README |
 | "RSA is the one key type of six with no coverage" | **LOOSE, and this file's own opening said it.** `okcore.h`'s `KEYTYPE_*` values are 1..6 and **all six are ECC** - ed25519, P256, secp256k1, curve25519, ML-KEM-768, X-Wing - and all six were already covered by `14-stored-keys`. RSA is a **seventh key kind outside that enum**, with its own EEPROM accessor (`okeeprom_eeget_rsakey` rather than `..._ecckey`), its own flash sector, and a "type" that means modulus size rather than algorithm. The gap was real; the arithmetic describing it was not |
 
 `OKFWUPDATE` is the exception to "check it": it is not to be verified
@@ -544,10 +555,102 @@ And the two carried-over rows that came over only partly:
 `PINS.secondary` and `PINS.selfDestruct` appear once each, both as *negative*
 assertions in `07-unlock`.
 
-- [ ] **Second profile** - unlock into it, confirm it is a different profile with
-      different slot data, and confirm it cannot see profile 1's.
-- [ ] **Self-destruct** - emulated only. It factory-resets, which on a physical
-      key means a reflash, so gate it on a capability that says exactly that.
+- [x] **Second profile** → `01-protocol/20-second-profile`, 3 tests in 39s,
+      `--isolate` 3/3 and `--reverse` green. The first time either kit has
+      entered the second profile at all.
+
+      Entirely on the KEYBOARD surface for every claim about what the device
+      holds, which is the strongest oracle here and survives a production walk:
+      what a slot contains is proven by reading what the device TYPES, not by an
+      acknowledgement that a write was accepted. `ensureUnlocked()` is unusable
+      in this file and the reason generalises - an unlocked device says nothing
+      about WHICH PROFILE it is unlocked into, so every test restarts and enters
+      its own PIN.
+
+      **Two of the three things this row asked for are true and the third is
+      not.** It is a different profile and it has different slot data:
+      `gen_press()` adds 12 (and `gen_hold()` 12 + 6), so the second profile's
+      buttons address slots 13..24 and can NEVER address 1..12. But it does see
+      profile 1's - see the premise below and the row after this one.
+- [x] **The second profile does not have its own key** - measured, and the row
+      above asked to confirm the opposite. Both profiles unwrap the SAME stored
+      32-byte master profile key, deliberately: the comment at the branch says
+      "Using new method, PIN changes supported", and a wrapped master is what
+      lets a PIN change without re-deriving everything. The backwards-compatible
+      path beside it (`Curve25519::eval(profilekey, KEK, p1hash)`) is the one
+      that gives profile 2 a key of its own, and it only runs when no stored
+      profile key is found.
+
+      The firmware printed the evidence itself, on the first run of the file
+      while the assertion was still the other way round:
+
+      ```
+      INPUT KEY         85 E7 A9 F7 …      the key profile 2 read with
+      SLOT              13
+      ENCRYPTED STATE   E6 C2 DD 70 …      sealed while in profile 1
+      DECRYPTED STATE   70 72 6F 66 69 …   "profileONEsecret1"
+      ```
+
+      An AES-GCM decrypt that succeeds across the boundary can only mean one key.
+      **This is a documented property, not a failed boundary** - plausible
+      deniability belongs to the travel BUILD (see README's `STD_VERSION` note
+      and the row below), so the second profile's separation being by slot
+      numbering is what it is supposed to be. Pinned as it ships, and the test
+      fails if the profiles are ever given separate keys.
+
+      Two things bound it anyway, worth knowing before anyone reads it as more
+      than it is: a second-profile press can never reach slots 1..12, and no
+      client message reads a password back out - so reaching across needs a slot
+      both profiles can address, which is what the test arranges deliberately.
+- [x] **Self-destruct** → `01-protocol/21-self-destruct`, 2 tests in 63s, gated
+      on **`full-wipe`** - the existing capability, reused rather than duplicated,
+      because its reason string already says the exact cost: `factorydefault()`
+      erases the firmware hash and forces the bootloader, so a physical key needs
+      reflashing. Free on the emulator, false on hardware unless somebody sets
+      `OKT_ALLOW_FULL_WIPE=yes`. **Do not weaken it.**
+
+      The device answers `UNLOCKED, NO PIN SET` afterwards, which `status()` maps
+      to `uninitialized`, and the primary PIN that worked a moment earlier
+      unlocks nothing.
+
+      The second test is the one that means something to a person - not "the
+      device says it is blank" but "the secret does not come back". It stores a
+      password, types it back, self-destructs, RE-PROVISIONS with the same three
+      PINs, and presses again. Unrecoverable for two reasons and only one of them
+      is the erase: re-provisioning generates a NEW random profile key, so the
+      same PINs on the same device cannot read what the old key sealed.
+
+      **Both tests needed a control the first version lacked.** After the wipe the
+      slot types nothing at all - and "nothing" is equally what three presses
+      discarded mid-fade produce, and what a dead keyboard interface produces. So
+      the file writes a different secret into the same slot afterwards and reads
+      it back, which is what makes the silence attributable to the wipe.
+
+      Note the ORDER of the three PIN checks is what makes this testable:
+      `sdhashevaluate()` is an `else` after both profile evaluations, so it can
+      only fire on a PIN that is neither profile's. That is also why
+      `lib/config.js` insists the three test PINs are distinct - a repeat would
+      be swallowed earlier and this file would wipe nothing while passing.
+- [ ] **The International Travel Edition - DEFERRED until the kit is complete**,
+      and cheap when it comes. `STD_VERSION` is a `#define` in the sources rather
+      than a build flag, so the travel edition is a comment-out and a rebuild.
+      **Two lines, not one**, which is the trap: `libraries/onlykey/onlykey.h:84`
+      and `OnlyKey-Firmware/OnlyKey/OnlyKey.ino:82` both define it, and doing one
+      gives a half-travel build where the units that include `onlykey.h` take one
+      side of every guard and the sketch takes the other.
+
+      **File it beside `usb_desc.h`'s commented-out production block** - both are
+      hand-edited source variants the build cannot distinguish, so both need the
+      same care and neither shows up in a build log.
+
+      **The approach is a DIFF of the same suite across both builds, not a new
+      suite.** 76 guard directives (measured; see README for the command) and what
+      matters is which behaviours change, which a second suite would assert
+      separately and therefore never compare. Everything the kit has - both
+      fixtures, every state module, every test - assumes `STD_VERSION` today, so
+      anything reached only when `profilemode == NONENCRYPTEDPROFILE` is untested
+      by construction. Saying so is the point of this row; it is not a gap to
+      close now.
 
 ## 4. Section 3 - the pages that are left
 
@@ -625,8 +728,10 @@ that file skipped and never touched the key.
 ## Isolation debt
 
 Measured 2026-08-05 with `okt run <file> --isolate` across the tree:
-**41 files, 239 tests - 18 files pass, 23 fail, 155/239 tests (65%) stand alone.**
-(`19-rsa-keys` is the +1 file and +7 tests, passing its gate as a new file must.)
+**43 files, 244 tests - 20 files pass, 23 fail, 160/244 tests (66%) stand alone.**
+The three new files - `19-rsa-keys` (7), `20-second-profile` (3),
+`21-self-destruct` (2) - pass their gate as new files must, which is where all of
+the +3 files and +12 tests came from.
 
 Retrofitted **opportunistically**, when a file is being worked on for another
 reason. Not a project of its own: the sweep is worth more than a clean
@@ -641,7 +746,7 @@ sometimes changes what the file is testing.
 | section | files pass/total | tests alone |
 |---|---|---|
 | `00-sanity` | **7/7** | 50/50 |
-| `01-protocol` | 4/14 | 45/75 |
+| `01-protocol` | 6/16 | 50/80 |
 | `02-cli` | 4/11 | 33/64 |
 | `03-gui` headless | 3/8 | 26/49 |
 | `04-app` | 1/1 | 1/1 |
