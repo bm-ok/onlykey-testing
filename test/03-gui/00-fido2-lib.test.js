@@ -1,6 +1,30 @@
 /*
- * Section 3, headless tier: the web app's OWN device library, against the
- * emulated device. No browser, no display, no USB, no kernel HID node.
+ * SECTION 3 - the web app, in two tiers, and the split is the useful part.
+ *
+ * The web app is two things stacked. Underneath is
+ * onlykey.github.io/src/onlykey-fido2, a standalone device library (also
+ * published as github.com/bmatusiak/node-onlykey-fido2) that speaks CTAP2 and
+ * the vendor tunnel. On top is the page that calls it. Only the top half needs
+ * a browser, so the file number is where the section splits:
+ *
+ *   00-09  the library, headless. No display, no USB, no kernel HID node -
+ *          just the browser surface it touches, shimmed onto this kit's own
+ *          CTAP2 layer. Runs anywhere section 1 runs, CI included.
+ *   10+    the page itself, in nw.js. Needs `display`, and a device the page
+ *          can actually reach. 10-session raises the two long-lived processes
+ *          and 19-stop takes them down, as visible test files rather than
+ *          hooks.
+ *
+ * The order is the point of the split. If the library cannot talk to the device
+ * headlessly, launching a browser to watch it fail again explains nothing - so
+ * these files are the browser tier's own pre-flight. `display` is a capability,
+ * so on a machine or runner without one the browser half skips with a stated
+ * reason while this half still runs.
+ *
+ * ---
+ *
+ * This file: the web app's OWN device library, against the emulated device.
+ * No browser, no display, no USB, no kernel HID node.
  *
  * onlykey.github.io/src/onlykey-fido2 is what every browser user actually runs,
  * and it is the one client of the three that nothing tests - its own test-api
