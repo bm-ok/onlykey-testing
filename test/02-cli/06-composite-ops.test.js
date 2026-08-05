@@ -129,8 +129,15 @@ describe('composite operations, through the web app\'s library', {
     const devicePub = x25519.getPublicKey(x25519Sk);
     const expected = Buffer.from(x25519.getSharedSecret(ephemeralSk, devicePub));
 
-    const shared = await pqc.confirmWhilst(device,
-      pqc.challengeDigitsFor(Buffer.from(ephemeralPub)),
+    /*
+     * Answered by READING the challenge off the device's console rather than
+     * predicting it, unlike the signature above. Both mechanisms are live on
+     * purpose: predicting checks that this kit derives the same digits the
+     * firmware does, and reading is what the browser pages need, since a page
+     * assembles payloads nobody outside it can reconstruct. Keeping one of each
+     * means neither goes stale.
+     */
+    const shared = await pqc.confirmFromConsole(device,
       () => third.composite_decrypt(SLOT_ID, ephemeralPub), { signal });
 
     const bytes = Buffer.from(shared);

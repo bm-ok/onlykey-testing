@@ -8,11 +8,11 @@ Counts are as of 2026-08-05, both adapters green, hardware on `libraries@83353cf
 
 | | emulated | hardware |
 |---|---|---|
-| sanity | 45 passed, 0 failed | 45 passed, 0 failed |
+| sanity | 50 passed, 0 failed | 50 passed, 0 failed |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed, 9 skipped |
 | section 2 | 31 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
 | section 3 | 72 passed, 0 failed (headless 50 + browser 22) | n/a - both tiers drive the emulator by design |
-| **whole tree** | **216 passed** | **96 passed, 9 skipped-with-reason** |
+| **whole tree** | **221 passed** | **96 passed, 9 skipped-with-reason** |
 
 The key is flashed with `libraries@83353cf` and sections 0 and 1 pass on it.
 Section 2 cannot run against a physical key at all (`client-access`), and
@@ -612,9 +612,17 @@ slot fields are worse — two of twenty-eight.
         unanswered and the page reports "Composite operation abandoned by the
         device" for an operation that was half done - one `CTAP1_SUCCESS` in its
         console, then an abandonment.
-      - Answering repeatedly was the obvious fix and did NOT work as written:
-        the run ended with three outstanding `Received Message` waits, so the
-        loop is arming waits it never settles. That is where to pick up.
+      - Answering repeatedly IS the fix and `confirmFromConsole()` now does it
+        correctly - proven against section 2's own composite sign and decrypt,
+        which it drives end to end. `06-composite-ops` uses it for the decrypt
+        and keeps predicted digits for the signature, so both mechanisms stay
+        live: predicting proves this kit derives what the firmware derives,
+        reading is what a page needs.
+      - So the helper is no longer the suspect. What remains unexplained is the
+        PAGE: its console shows PENDING, PENDING, SUCCESS - one operation
+        completing - and then nothing further, with `#pgp_plaintext_out` never
+        filling. The next thing to find out is whether openpgp's second hook is
+        ever invoked, which means instrumenting the page rather than the kit.
       - The page reports its errors in `#pgp_decrypt_status` etc., so a failure
         message should read those as well as the console.
 
