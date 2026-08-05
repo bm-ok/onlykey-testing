@@ -36,16 +36,28 @@ carried-over table that have no replacement yet.
       the tests count the device's own priming marker and require it not to
       move, so a firmware change that started demanding a confirmation reads as
       a sentence instead of a timeout.
-- [ ] **`06-lib-agent-ssh`** (TC-13) - `onlykey-agent <identity>` with no
-      command, no `--daemonize`, no `--connect` and no `--shell` prints the
-      device's SSH public key and exits 0. No SSH server, no shell, no device
-      state changed. Goes through `okcrypto_ecdh()`'s "SSH/GPG Derive Key"
-      branch, the same firmware path the web app's PGP flow uses.
+- [x] **`06-lib-agent-ssh`** (TC-13) → `02-cli/08-lib-agent-ssh`, 7 tests in 7s.
+      Three oracles on one key - lib-agent over hidapi, the kit over the
+      in-process vendor interface, and node:crypto deriving the public half from
+      the seed the firmware prints. "No device state changed" is asserted, not
+      described: zero button challenges and zero flash sector erases across the
+      file. Note the number - the row is named for the OLD kit's file; this
+      kit's next free number was 08.
 - [ ] **`07-lib-agent-gpg`** (TC-13) - `onlykey-gpg init`, and **always pass
       `--homedir` explicitly**: without it the command touches the caller's real
       `~/.gnupg`, which on this machine is a developer's own keyring. `run_init()`
       refuses to reuse an existing homedir, so a retry needs a fresh directory
       per attempt rather than a cleaned one.
+
+      Do NOT assume it is the SSH row with a different binary - `pubkey()`
+      branches on the proto and GPG takes the other side of every branch. It
+      hashes `identity.to_bytes()`, the WHOLE identity, where ssh hashes only
+      `user@host`; it calls `get_sk_dk()`, which reads `AGENTHOMEDIR` /
+      `GNUPGHOME` and greps `run-agent.sh` for `--skey-slot=` / `--dkey-slot=`,
+      so the slot is no longer unconditionally 132; and it looks the slot up by
+      KEYGRIP through `getkeylabels()` first, which touches slot labels and is
+      therefore the first thing here that is not read-only. `08-lib-agent-ssh`'s
+      zero-erase assertion is unlikely to survive unchanged.
 - [ ] **`age_file.js` against the real `age` binary** - PLAN puts this in
       section 2 rather than beside `03-gui/04-age-file`, because reading a file
       the real binary wrote needs the plugin, and the plugin needs a device.
@@ -63,11 +75,17 @@ Then the section's own open-ended half:
 Highest leverage in the kit: section 1 is the only device section CI can run, so
 every test that lands here runs on every push once stage 2 is enabled.
 
-Plane 1, the vendor interface - 9 of 18 messages covered:
+Plane 1, the vendor interface - 9 of 18 messages covered, plus two with a single
+branch each:
 
 - [ ] **`OKGETRESPONSE`** - first, for the reason at the top of this file.
 - [ ] **`OKGETPUBKEY` / `OKSIGN` / `OKDECRYPT`** across the six key types
-      (ed25519, P256, secp256k1, curve25519, ML-KEM-768, X-Wing).
+      (ed25519, P256, secp256k1, curve25519, ML-KEM-768, X-Wing). What exists
+      now is the DERIVED branches only - `OKGETPUBKEY` at slot 132
+      (`08-lib-agent-ssh`) and at slot 128 with `OKDECRYPT` (`07-derived-xwing`).
+      Both dispatch on the slot number, so the stored-slot branches - the ones
+      that read a key out of flash, where all six key types live - are still
+      untouched by either message.
 - [ ] **`OKPING`, `OKHMAC`, `OKWEBAUTHN`**.
 - [ ] **`OKSETPRIV` / `OKWIPEPRIV`** beyond the backup-passphrase slot.
 - [ ] **Slot fields beyond `LABEL` and `PASSWORD`** - 2 of 28 are written today.
