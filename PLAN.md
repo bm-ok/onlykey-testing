@@ -2,7 +2,12 @@
 
 Stages, in the order they are worth doing. [EXPLAINER.md](EXPLAINER.md) is the
 design and its reasoning; [README.md](README.md) is how to use what exists.
-This file is what is left.
+This file is what is left, and why.
+
+**[TODO.md](TODO.md) is the work list** - the same open items in the order to do
+them, with what each one needs. Read that to pick something up; read this to
+understand what you picked up. When an item is finished, both files change: the
+box in TODO.md and the reasoning here.
 
 Counts are as of 2026-08-05, both adapters green, hardware on `libraries@83353cf`:
 
@@ -470,8 +475,10 @@ consequence.
       bus-level detach, waiting for the hidraw nodes to actually go rather than
       for the write that causes it, since a client enumerating in that window
       still finds a device
-- [ ] The rest of the CLI rows: lib-agent SSH and GPG, `11-derived-xwing-cli`,
-      `17-nodejs-composite-pgp`
+- [ ] The rest of the CLI rows: lib-agent SSH and GPG, `11-derived-xwing-cli`.
+      `17-nodejs-composite-pgp` is done - `05-composite-load` and
+      `06-composite-ops`, the latter now covering both halves of both operations
+      and TC-11's own acceptance criterion
 - [ ] Then start section 2 against the emulator: `onlykey-cli` through the
       venv, driven by visible start/stop test files rather than hooks. The CLI
       exposes **36 subcommands** - that list is the section-2 checklist

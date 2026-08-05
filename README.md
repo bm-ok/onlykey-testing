@@ -5,7 +5,8 @@ physical hardware second. The test files are written once; an adapter decides
 which device they reach.
 
 The design and its reasoning are in [EXPLAINER.md](EXPLAINER.md). This file is
-how to use what was built.
+how to use what was built. What is left to build is [TODO.md](TODO.md), in the
+order to do it; [PLAN.md](PLAN.md) is why each of those items exists.
 
 ## Quick start
 
