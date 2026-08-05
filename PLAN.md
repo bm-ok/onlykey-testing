@@ -16,19 +16,26 @@ wearing the present tense - and the two adapters drift apart at different rates.
 | | emulated | last run | hardware | last run |
 |---|---|---|---|---|
 | sanity | 50 passed, 0 failed | 2026-08-05 17:35Z | 50 passed, 0 failed | 2026-08-05 16:12Z |
-| section 1 | 108 passed, 0 failed | 2026-08-05 18:23Z | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
+| section 1 | 110 passed, 0 failed | 2026-08-05 18:48Z | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
 | section 2 | 101 passed, 0 failed (gadget) | 2026-08-05 17:35Z | skipped - `client-access` | n/a |
 | section 3 | 72 passed, 0 failed (headless 50 + browser 22) | 2026-08-05 17:35Z | n/a - both tiers drive the emulator by design | n/a |
-| **whole tree** | **331 passed, 0 failed, 1 skipped** | 2026-08-05 18:23Z | **118 passed, 9 skipped-with-reason** | 2026-08-05 16:24Z |
+| **whole tree** | **333 passed, 0 failed, 1 skipped** | 2026-08-05 18:48Z | **118 passed, 9 skipped-with-reason** | 2026-08-05 16:24Z |
 
-**Section 1's 108 is the 17:35Z sweep's 96 plus three new files measured on their
-own** - `19-rsa-keys` 7, `20-second-profile` 3, `21-self-destruct` 2 - so it is
-arithmetic again, which is what the warning below is about. All twelve are green
-three ways each: natural order, `--isolate` and `--reverse`. Neither adapter has
-run the whole tree since, and **the hardware column has not seen any of the
-three**. All three are section 1 and therefore hardware-capable, but
-`21-self-destruct` will SKIP on a key unless somebody sets
-`OKT_ALLOW_FULL_WIPE=yes`, which is the gate working rather than a gap.
+**Section 1's 110 is the 17:35Z sweep's 96 plus four new files measured on their
+own** - `19-rsa-keys` 7, `20-second-profile` 3, `21-self-destruct` 2,
+`22-rsa-slot-tail` 2 - so it is arithmetic again, which is what the warning below
+is about. All fourteen are green three ways each: natural order, `--isolate` and
+`--reverse`. Neither adapter has run the whole tree since, and **the hardware
+column has not seen any of the four**. All four are section 1 and therefore
+hardware-capable in principle, but two carry gates that will skip on a key:
+`21-self-destruct` needs `OKT_ALLOW_FULL_WIPE=yes` and `22-rsa-slot-tail` needs
+`storage-files`, which no physical key has. Both are the gates working rather
+than gaps.
+
+**`--reverse` has now been measured across the tree** the way `--isolate` was -
+55 files in scope, 30 pass, 25 fail, all recorded as debt in TODO rather than
+fixed. The useful part is the correlation: every file written since `--reverse`
+became a gate passes it, and every failure predates the rule.
 
 **Both columns were single sweeps as of 17:35Z**, which they had not been before:
 

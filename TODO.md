@@ -24,7 +24,7 @@ implies:
 | | what | why it is next |
 |---|---|---|
 | 1 | `loadpqc` / `loadkey` accepting paths (§1) | the last section-2 row; a wiring job, the pieces exist |
-| 2 | HMAC settings (§2) | the half of old `08-backup-hmac` never covered; the last section-1 carry-over |
+| 2 | HMAC challenge-response (§2) | NOT "HMAC settings" - that half is already done by `11-cli-settings`. This is the Yubikey-style feature the old kit could not reach, and it needs two IPC verbs first |
 | 3 | the remaining pages (§4) | needs a browser and a human for `13-pgp-pqc` |
 | 4 | section 4, the app (§5) | no ancestor anywhere; genuinely last |
 | — | the International Travel Edition (§3) | DEFERRED until the kit is complete, by decision - a second BUILD, diffed against this one |
@@ -485,9 +485,61 @@ Plane 2, CTAP2 proper - the ceremony works; the extensions do not exist:
 
 And the two carried-over rows that came over only partly:
 
-- [ ] **HMAC settings** - the half of old `08-backup-hmac` that
-      `01-protocol/10-backup-restore` did not take. The backup half is more than
-      carried over; this half is not covered at all.
+- [ ] **HMAC - and this row is misnamed, which changes what is left to do.**
+      It has read as "HMAC settings", the half of old `08-backup-hmac` that
+      `10-backup-restore` did not take. **The settings half is already done.**
+      Read the old file's own scope note: what it covered was the `hmackeymode`
+      toggle and nothing else, and it said the actual challenge-response feature
+      "is a keyboard/OTP HID interface python-onlykey doesn't implement a client
+      for at all". `hmackeymode` is one of the 13 device settings
+      `02-cli/11-cli-settings` drives, so the carried-over half landed without
+      anybody noticing.
+
+      **What is genuinely uncovered is the feature itself**: the Yubikey-style
+      HMAC-SHA1 challenge-response, which the old kit could not reach and THIS
+      kit can - the same "the emulator makes the keyboard interface an event
+      rather than a privileged device node" argument that made backup and restore
+      testable. It is a proper section-1 test with an independent oracle:
+      node:crypto's HMAC-SHA1 over the same key and challenge.
+
+      The firmware side, established:
+
+      - `okcrypto_hmacsha1()` (okcrypto.cpp:850) needs `CRYPTO_AUTH == 4`, so a
+        button confirmation. It is the THREE-DIGIT challenge, not the single
+        press: the press handler's clause is `(CRYPTO_AUTH == 3 &&
+        packet_buffer_details[0] == OKHMAC && isfade)`, and
+        `done_process_packets()` only loads `stored_key_challenge_mode` for slots
+        `< 5` or 101..116 - the HMAC key slots are 129 and 130, so neither range
+        applies.
+      - The key is **20 bytes** (`Sha1.initHmac(ecc_private_key, 20)`), and the
+        slot selector is `keyboard_buffer[64]`: `0x30` and `0x38` pick
+        `RESERVED_KEY_HMACSHA1_1` / `_2` (ECC slots 130 and 129 - note the
+        source's own comments have those two the wrong way round), and 1..24
+        reads a per-slot HMAC key instead.
+      - Challenge length is inferred, not declared: all-`0x20` in bytes 57..63
+        means 32 (KeePassXC's empty buffer), otherwise it scans back from 63 for
+        the last non-zero and never goes below 16. **Any challenge under 16 bytes
+        is treated as 16**, and the source says so - which is where a response
+        differs from a real Yubikey's.
+      - The answer is packed with `0xC0`/`0xC1`/`0xC2`/`0xC3` markers and a
+        **CRC-16/X-25** (the code computes CRC-16/MCRF4XX and XORs `0xFFFF` to
+        convert, with a comment about the mismatch).
+
+      **The seam that is missing is in the KIT, not the firmware or the
+      emulator.** This channel is HID control transfers on the keyboard interface
+      - `SET_REPORT` 0x0921 and `GET_REPORT` 0x01a1 - and the emulator already
+      ports both (`emulator/core-override/okemu_usb.cpp`, which carries the whole
+      Yubikey state machine including the multi-report `0xC0`..`0xC3` read and the
+      waiting-for-a-press path), AND the addon already exports them:
+      `kbdSetReport(buffer)` and `kbdGetReport()` (`emulator/src/addon.cpp:215`).
+      What does not exist is a verb for them in the kit's IPC - nothing in
+      `emulator/lib/protocol.js` or `ipc-host.js` carries a set/get-report frame -
+      so `device.send(IFACE.KEYBOARD, …)` cannot reach it, because an interrupt
+      OUT report is not a control transfer.
+
+      So the work is: add the two verbs to the IPC and the device host, expose
+      them on the Device API, then write the test. Estimate is small and it is all
+      in this project's own code rather than under `onlykey/`.
 - [x] **RSA key handling** - the other half of old `12-non-pqc-regression` →
       `01-protocol/19-rsa-keys`, 7 tests in 104s, first run green, `--isolate`
       7/7 and `--reverse` green. **Every key kind the firmware stores now has
@@ -740,21 +792,102 @@ Not left behind: no FIDO2 client PIN. `18-clientpin-credmgmt` sets one, but it
 requires `fido-reset`, which is false on hardware unless somebody opts in - so
 that file skipped and never touched the key.
 
-## Order debt, the other direction
+## Order debt, the other direction - MEASURED
 
-- [ ] **Measure `--reverse` across the tree**, the way `--isolate` was measured
-      below. It costs one ordinary run per file rather than a boot per test, so
-      it is far cheaper than that pass was - but it competes with any other work
-      for the device, so it wants a quiet moment. The five sweep files and
-      `15-age-file-interop` are green reversed; nothing else has been checked.
+- [x] **`--reverse` across the tree**, one ordinary run per file, 2026-08-05.
+      **55 files in scope, 30 pass, 25 fail.** Recorded as debt and NOT fixed,
+      the same decision the isolate pass took: the coverage is worth more than a
+      clean order record, and `--reverse` stays a gate for NEW files.
+
+| section | files pass/total |
+|---|---|
+| `00-sanity` | **7/7** |
+| `01-protocol` | 12/23 |
+| `02-cli` | 7/16 |
+| `03-gui` headless | 3/8 |
+| `04-app` | 1/1 |
+
+      Sanity is clean for the same reason it is clean under `--isolate`: those
+      files are `device: false`, so there is no device state to spoil. The four
+      session-scoped GUI files (`10-session`, `11`, `12`, `19-stop`) are **not in
+      scope and are not debt** - `10-session` starts nw.js and the express server
+      and `19-stop` stops them, so running any of them alone would orphan a
+      browser and a server. Not run, rather than run and cleaned up after.
+
+      **THE PATTERN IS ONE THING, and it is the mirror of the isolate pattern.**
+      Look at which test is named in each failure: `cleans up after itself`,
+      `has the restored label back`, `put the key where it said it did`, `signs
+      with the key it was given`. These are FINAL tests being run FIRST. A file
+      written as a narrative - establish, use, verify, tidy up - reverses into
+      tidy-up-first, and the cleanup test is usually the one that fails because
+      there is nothing yet to clean up. That is a different fault from the
+      isolate one and it needs the same fix: establish the state you assert
+      about.
+
+      **The gate is working, and this is the evidence.** Every file written since
+      `--reverse` became a gate passes it: `01-protocol/13`-`22` (ten files, all
+      green) and `02-cli/10`-`15` (six files, all green). Every failure is in a
+      file that predates the rule. Nothing that landed under the two-gate rule
+      has failed either gate.
+
+| file | reversed failure - the test that runs first and cannot |
+|---|---|
+| `01-protocol/02-restart` | keeps its storage across the reboot |
+| `01-protocol/03-wipe` | no longer accepts the old PIN |
+| `01-protocol/04-provisioning` | unlocks with the PIN it was just given |
+| `01-protocol/05-snapshot` | boots LOCKED, always |
+| `01-protocol/06-vendor-status` | does not read the vendor interface at all while locked |
+| `01-protocol/07-unlock` | unlocks once the whole PIN has landed |
+| `01-protocol/08-slot-keyboard` | wipes the slot without taking the firmware down |
+| `01-protocol/09-fido-ctaphid` | answers a PING on any channel id, allocated or not |
+| `01-protocol/10-backup-restore` | has the restored label back |
+| `01-protocol/11-fido2-ceremony` | refuses an assertion for a credential it does not know |
+| `01-protocol/12-webauthn-tunnel` | rejects a command it does not implement |
+| `02-cli/00-venv` | reports a locked device as locked, the same way the kit does |
+| `02-cli/01-pqc-keygen` | put the key where it said it did |
+| `02-cli/03-pqc-decrypt` | cleans up after itself |
+| `02-cli/04-pqc-no-device` | cleans up after itself |
+| `02-cli/05-composite-load` | signs with the key it was given |
+| `02-cli/06-composite-ops` | will not sign the same digest twice without a new confirmation |
+| `02-cli/07-derived-xwing` | cleans up after itself |
+| `02-cli/08-lib-agent-ssh` | hashes the user and the host, and nothing else |
+| `02-cli/09-lib-agent-gpg` | cleans up after itself |
+| `03-gui/00-fido2-lib` | reads the same firmware version the kit does |
+| `03-gui/02-derive` | derives a shared secret against that public key |
+| `03-gui/03-xwing-derive` | cannot be finished without the device |
+| `03-gui/06-composite-key` | generates a different key every time |
+| `03-gui/07-pgp-keys` | carries the mode the page sets |
+
+      **Two of these are deliberate rather than lazy**, the same two the isolate
+      pass excused: the lib-agent pair and the composite PGP files are built
+      around ONE long operation with several assertions about it, and re-running
+      `onlykey-gpg init` per assertion would test something different from what
+      the file is for. `--reverse` reporting them is the flag working, not a
+      defect to chase.
+
+      **One thing the sweep proved about itself:** running the "cleans up after
+      itself" tests first left NO orphans - no `onlykey-gpg-agent`, port 3000
+      free - so those cleanups are safe to run against nothing, which is worth
+      knowing before anyone reorders them.
 
 ## Isolation debt
 
-Measured 2026-08-05 with `okt run <file> --isolate` across the tree:
-**43 files, 244 tests - 20 files pass, 23 fail, 160/244 tests (66%) stand alone.**
-The three new files - `19-rsa-keys` (7), `20-second-profile` (3),
-`21-self-destruct` (2) - pass their gate as new files must, which is where all of
-the +3 files and +12 tests came from.
+Measured 2026-08-05 with `okt run <file> --isolate`:
+**40 files, 232 tests - 17 files pass, 23 fail, 148/232 tests (64%) stand alone.**
+
+**THAT SCOPE IS STALE, and adding to the numbers rather than re-deriving them was
+the wrong fix - it read as current when it was not, which is the exact failure
+this file warns about for the counts table.** The sweep covered the tree as it
+stood when it ran: 13 files in `01-protocol` and 11 in `02-cli`. The reverse sweep
+above counted **55 files in scope** on the same day, so **15 files are outside
+this tally** - `01-protocol/13`-`22` and `02-cli/11`-`15`.
+
+All 15 pass `--isolate` individually, because they landed under the two-gate rule
+and could not have landed otherwise (the one row that does not record its result
+is `02-cli/10-cli-reads`). So at FILE level today it is 32 of 55 rather than 17 of
+40. The test-level percentage has NOT been re-derived and the table below is the
+40-file measurement - re-run the pass if the number matters, rather than
+arithmetic on this one.
 
 Retrofitted **opportunistically**, when a file is being worked on for another
 reason. Not a project of its own: the sweep is worth more than a clean
@@ -769,7 +902,7 @@ sometimes changes what the file is testing.
 | section | files pass/total | tests alone |
 |---|---|---|
 | `00-sanity` | **7/7** | 50/50 |
-| `01-protocol` | 6/16 | 50/80 |
+| `01-protocol` | 3/13 | 38/68 |
 | `02-cli` | 4/11 | 33/64 |
 | `03-gui` headless | 3/8 | 26/49 |
 | `04-app` | 1/1 | 1/1 |
