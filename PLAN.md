@@ -15,26 +15,34 @@ wearing the present tense - and the two adapters drift apart at different rates.
 
 | | emulated | last run | hardware | last run |
 |---|---|---|---|---|
-| sanity | 50 passed, 0 failed | 2026-08-05 | 50 passed, 0 failed | 2026-08-05 16:12Z |
-| section 1 | 96 passed, 0 failed | 2026-08-05 | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
-| section 2 | 101 passed, 0 failed (gadget) | 2026-08-05 | skipped - `client-access` | n/a |
-| section 3 | 72 passed, 0 failed (headless 50 + browser 22) | 2026-08-05 16:34Z | n/a - both tiers drive the emulator by design | n/a |
-| **whole tree** | **319 passed** | | **118 passed, 9 skipped-with-reason** | 2026-08-05 |
+| sanity | 50 passed, 0 failed | 2026-08-05 17:35Z | 50 passed, 0 failed | 2026-08-05 16:12Z |
+| section 1 | 96 passed, 0 failed | 2026-08-05 17:35Z | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
+| section 2 | 101 passed, 0 failed (gadget) | 2026-08-05 17:35Z | skipped - `client-access` | n/a |
+| section 3 | 72 passed, 0 failed (headless 50 + browser 22) | 2026-08-05 17:35Z | n/a - both tiers drive the emulator by design | n/a |
+| **whole tree** | **319 passed, 0 failed, 1 skipped** | 2026-08-05 17:35Z | **118 passed, 9 skipped-with-reason** | 2026-08-05 16:24Z |
 
-How each side was measured is not the same, and it matters when reading them:
+**Both columns are now single sweeps**, which they were not before:
 
-- **Hardware** is one sweep. Sections 0 and 1 were run end to end against the key
-  on 2026-08-05, finishing 16:24Z, and the numbers above are that run's.
-- **Emulated** is per file, as each landed. Sections 0, 1 and 2 were all touched
-  on 2026-08-05, so their totals are current, but no single tree-wide emulated
-  run produced them.
-- **Section 3 was re-measured on 2026-08-05 at 16:34Z** and is unchanged at 72,
-  in 77s, as one section rather than file by file - `10-session` starts nw.js and
-  the express server and `19-stop` stops them, and they are held across files by
-  the module cache, so running the files separately would not work. It remains
-  the section most exposed to drift, since its browser tier depends on nw.js and
-  the onlykey.github.io checkout rather than on anything this repo pins, so it is
-  still the one to re-measure when either of those moves.
+- **Emulated**: `okt run` with no target, one process, all four sections in
+  order. 319 passed, 0 failed, 1 skipped, 879s, run `20260805-172107-935299`.
+  The one skip is section 4's stub, which has never been written. Nothing was
+  left behind - port 3000 free, no nw.js and no express server, which is
+  `19-stop` doing its job inside a full-tree run rather than a section one.
+- **Hardware**: sections 0 and 1 end to end against the key, finishing 16:24Z.
+  Sections 2 and 3 cannot run there by construction - `client-access` needs the
+  gadget, and section 3's headless tier drives the emulator on purpose.
+
+Until this run the emulated column was per-file arithmetic, summed as each file
+landed rather than produced by any single run. It agreed exactly, which is
+reassuring rather than redundant: a per-file total can hide a file that only
+passes when it runs alone, and this one does not.
+
+Section 3 remains the most drift-exposed section - its browser tier depends on
+nw.js and the onlykey.github.io checkout rather than on anything this repo pins -
+so it is still the one to re-measure when either of those moves. Note it must run
+as a SECTION, never file by file: `10-session` starts nw.js and the express
+server, `19-stop` stops them, and the session is held across files by the module
+cache.
 
 Run directories under `runs/` carry the authoritative record - each has a
 `status.json` with `startedAt`, `finishedAt` and the counts, and `run.log`'s
