@@ -368,9 +368,25 @@ branch each:
 
 Plane 2, CTAP2 proper - the ceremony works; the extensions do not exist:
 
-- [ ] **`hmac-secret`** - the extension this firmware advertises and nothing
-      exercises. Also the only thing that would reach the unproven
-      null-dereference patch at `okcore.cpp:7645`.
+- [x] **`hmac-secret`** → `01-protocol/15-hmac-secret`, 6 tests in 11s,
+      `--isolate` 6/6 and `--reverse` green. Entirely on the FIDO surface -
+      user presence arrives as KEEPALIVE(UP_NEEDED), which is client-visible -
+      so the whole file survives into a production walk.
+
+      The properties tested are the ones the feature exists for: 32 bytes back,
+      the SAME 32 for the same salt (a password manager wraps a vault key with
+      them, so unreproducible means the vault is gone), a DIFFERENT secret per
+      salt, and a DIFFERENT secret per credential (or one site's credential
+      unwraps another's vault). Plus the negative: a credential that did not ask
+      for the extension must not come back carrying it.
+
+      `getKeyAgreement` works with **no PIN set** - `clientPin` is false and it
+      still answers, because the exchange is about keeping the salt confidential
+      rather than authenticating anybody. If it did not, the extension would be
+      advertised and unusable.
+
+      **The `okcore.cpp:7645` note was wrong** - see PLAN. Two unrelated
+      features that share the word HMAC.
 - [ ] **`credProtect`** - the other advertised extension.
 - [ ] **Resident keys** (`rk` is true), **`credMgmt`**, **`CLIENT_PIN`**,
       **`RESET`**.
