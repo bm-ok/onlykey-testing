@@ -4,19 +4,20 @@ Stages, in the order they are worth doing. [EXPLAINER.md](EXPLAINER.md) is the
 design and its reasoning; [README.md](README.md) is how to use what exists.
 This file is what is left.
 
-Counts are as of 2026-08-04, both adapters green:
+Counts are as of 2026-08-05, both adapters green, hardware on `libraries@83353cf`:
 
 | | emulated | hardware |
 |---|---|---|
-| sanity | 37 passed, 0 failed | same - it needs no device |
-| section 1 | 68 passed, 0 failed | 59 passed, 0 failed |
+| sanity | 37 passed, 0 failed | 37 passed, 0 failed |
+| section 1 | 68 passed, 0 failed | 59 passed, 0 failed, 9 skipped |
 | section 2 | 23 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
-| section 3 | 50 passed, 0 failed (headless tier) | untried |
-| **whole tree** | **178 passed** | **94 passed, 23 skipped-with-reason** |
+| section 3 | 50 passed, 0 failed (headless tier) | n/a - the headless tier drives the emulator by design |
+| **whole tree** | **178 passed** | **96 passed, 9 skipped-with-reason** |
 
-Hardware counts are from before the PQC work; section 2 cannot run there at all,
-so the only thing waiting on a key is a re-run of sections 0 and 1 against
-`libraries@83353cf`, which needs a Teensy rebuild and a reflash.
+The key is flashed with `libraries@83353cf` and sections 0 and 1 pass on it.
+Section 2 cannot run against a physical key at all (`client-access`), and
+section 3's headless tier drives the emulator on purpose - so those two stay
+emulator-only by construction rather than by omission.
 
 ## Three kits, not two
 
