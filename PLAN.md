@@ -11,8 +11,8 @@ Counts are as of 2026-08-04, both adapters green:
 | sanity | 37 passed, 0 failed | same - it needs no device |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed |
 | section 2 | 23 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
-| section 3 | 18 passed, 0 failed (headless tier) | untried |
-| **whole tree** | **146 passed** | **94 passed, 23 skipped-with-reason** |
+| section 3 | 24 passed, 0 failed (headless tier) | untried |
+| **whole tree** | **152 passed** | **94 passed, 23 skipped-with-reason** |
 
 Hardware counts are from before the PQC work; section 2 cannot run there at all,
 so the only thing waiting on a key is a re-run of sections 0 and 1 against
@@ -146,7 +146,7 @@ the second fails the page is at fault rather than the device.
 | `connect` | all of them | - | - | ✅ `00-fido2-lib` | - |
 | X-Wing maths (`age_pqc.js`) | age-derive | - | `15` | ✅ `01-age-pqc-parity` | ☐ |
 | `derive_public_key` / `derive_shared_secret` | password-generator, vault | - | `14` | ✅ `02-derive` | ☐ |
-| `derive_xwing_recipient` / `derive_xwing_decap` | age-derive | - | `15` | ☐ | ☐ |
+| `derive_xwing_recipient` / `derive_xwing_decap` | age-derive | - | `15` | ✅ `03-xwing-derive` | ☐ |
 | `composite_sign` / `composite_decrypt` | pgp-pqc | `17-nodejs` | `17-nwjs` | ☐ | ☐ |
 | `startEncryption` / `startDecryption` (`onlykey-pgp.js`) | encrypt, decrypt | `18`'s `pgp_env` half | `18` | ☐ | ☐ |
 | age file format (`age_file.js`) | age-derive | - | - | ☐ | - |
@@ -209,7 +209,7 @@ a section that does not exist yet.
 | ✅ | `03-pqc-decrypt` — X-Wing encrypt/decrypt (TC-05) | cli | `03-pqc-decrypt` | real `age`, encrypted on the host, decrypted on the device, byte for byte — and the end-to-end proof that `libraries@83353cf` fixed something real, since both bugs surfaced here as "no identity matched any of the recipients" |
 | ✅ | `04-pqc-no-device` — decrypt with no device (TC-07) | cli | `04-pqc-no-device` | **unattended, in 27 seconds.** The old kit printed "please UNPLUG the OnlyKey now", waited two minutes for a human, and was skipped by default. The gadget unbinds its own UDC, and the firmware keeps running with its RAM intact — which a hand on the cable could not arrange either, an OnlyKey being bus-powered |
 | ✅ | `05-age-pqc-derived` — split custody, JS math | sanity | `04-age-pqc-derived` | **no binaries, no device, no node-hid.** Six tests in 80ms, including the fixed vector from python-onlykey's own `derived_xwing.py`, so this is cross-language agreement and not self-consistency. The three `@noble` packages are optional dependencies behind the `xwing-math` capability |
-| ⚠️ | `10-fido2-xwing-derive` — X-Wing derive over FIDO2 (TC-09/10) | protocol | `12-webauthn-tunnel` | the tunnel it rides on is built and proven on both adapters; the X-Wing derive command itself still needs its option bytes worked out |
+| ✅ | `10-fido2-xwing-derive` — X-Wing derive over FIDO2 (TC-09/10) | protocol, gui | `12-webauthn-tunnel`, `03-gui/03-xwing-derive` | the tunnel is proven on both adapters, and the derive itself now runs — not by working the option bytes out, but by letting the shipped library send them, exactly as this file predicted. Full split-custody round trip: the device derives, a sender encapsulates with no device present, the device contributes only ss_X, and the host finishes |
 | ☐ | `17-nodejs-composite-pgp` — composite PGP-PQC over Node FIDO2 (TC-11) | cli | — | mixed: the FIDO2 half is plane 3 and reachable now, but it also shells to `onlykey-cli` |
 | ☐ | `06-lib-agent-ssh` — SSH derived-key export (TC-13) | cli | — | lib-agent finds the device through hidapi → **stage 3** |
 | ☐ | `07-lib-agent-gpg` — GPG derived identity (TC-13) | cli | — | **stage 3** |
@@ -538,8 +538,14 @@ slot fields are worse — two of twenty-eight.
       vendor interface (`OKSETSLOT` slot 1 field 21) rather than shelling to
       onlykey-cli - reaching for the CLI would drag `client-access` in and take
       the file out of CI
-- [ ] The rest of the build sheet above. The PGP layer is the biggest gap and
-      the one with a page at both ends (`encrypt`/`decrypt`, `pgp-pqc`)
+- [x] `03-xwing-derive`: the derived X-Wing path end to end against the
+      emulated device, finished with BOTH this kit's maths and the web app's.
+      This is what `10-fido2-xwing-derive` was blocked on
+- [ ] The rest of the build sheet above. Still open, in rough order of size:
+      the PGP layer (`onlykey-pgp.js`, a page at each end), composite PGP-PQC
+      (`composite_sign`/`composite_decrypt` plus `composite_pgp.js`'s blob
+      packing), `age_file.js` (pure JS, checkable against the real `age`
+      binary), and the vendored openpgp fork
 - [ ] Section 3's browser tier (`03-gui/10+`), the web app in nw.js
 - [ ] Section 4, the OnlyKey app — never driven from a harness at all
 - [ ] Services started and stopped by *visible* test files at the section
