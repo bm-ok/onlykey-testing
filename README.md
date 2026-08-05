@@ -19,6 +19,37 @@ node bin/okt.js run 01-protocol/07-unlock.test.js   # or one file
 echo $?                                  # the verdict
 ```
 
+### Running one test
+
+`--test` selects by substring against `"<suite name> <test name>"`, which is how
+a single endpoint or a single behaviour gets debugged without its neighbours:
+
+```sh
+node bin/okt.js run test/02-cli/10-cli-reads.test.js --test rng
+```
+
+That only works if the test needs nothing an earlier test in its file did, and
+that is a property of how the file was written rather than of the runner.
+`--isolate` checks it: each selected test runs in its own device session, and
+anything that cannot stand alone is named.
+
+```sh
+node bin/okt.js run test/02-cli/10-cli-reads.test.js --isolate
+```
+
+It costs a fixture restore and a boot per test, so it is for after adding tests
+rather than for ordinary runs. **Files in section 2's CLI sweep are expected to
+pass it** - each brings the device to the state it needs itself, through
+`device.ensureUnlocked()`, which is the idempotent form of `unlock()`. Files
+built around one long operation with several assertions about it - the lib-agent
+pair, the composite PGP files - deliberately are not, and `--isolate` reporting
+them says exactly that rather than that something is broken.
+
+`unlock()` cannot be called twice and the reason is worth knowing: it works by
+PRESSING the PIN digits, so on an already-unlocked device those are slot
+presses, the device types whatever the slots hold, and the call waits for an
+`UNLOCKED` that will not come again. `ensureUnlocked()` reads the status first.
+
 Nothing has to be installed to run the kit. Everything in `package.json` is an
 **optional** dependency, and a file that needs one skips itself with a stated
 reason rather than failing:

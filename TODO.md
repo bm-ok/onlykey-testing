@@ -78,6 +78,19 @@ and exit 0 when they dislike their arguments, so what the command did has to be
 visible from a second place - the kit's own vendor interface reading back what
 the CLI wrote, or the device's console saying what it received.
 
+**EVERY TEST IN THESE FILES MUST STAND ALONE.** A single endpoint has to be
+debuggable on its own with `okt run <file> --test <name>`, which only works if
+no test depends on what an earlier one did. So each brings the device to the
+state it needs itself, through `device.ensureUnlocked()` - the idempotent form
+of `unlock()`, which cannot be called twice because it PRESSES the PIN digits
+and on an unlocked device those are slot presses.
+
+Check it with `okt run <file> --isolate`, which runs each test in its own device
+session and names any that cannot. Run it after adding endpoints; it costs a
+boot per test. The two lib-agent files and the composite PGP ones do NOT pass
+it, deliberately - they are built around one long operation with several
+assertions about it - so a report naming them is a fact rather than a fault.
+
 - [x] **`10-cli-reads`** - `version` `fwversion` `getlabels` `getkeylabels`
       `ping` `rng`. 7 tests in 10s, first run green. The version is checked
       against what section 1's own unlock reported, the labels against a slot

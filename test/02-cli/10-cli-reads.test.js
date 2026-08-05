@@ -28,6 +28,14 @@
  * entirely, since several of these print a help line and exit 0 when they do
  * not like their arguments.
  *
+ * EVERY TEST HERE STANDS ALONE, which is a requirement rather than a style.
+ * A single endpoint has to be debuggable on its own -
+ * `okt run test/02-cli/10-cli-reads.test.js --test rng` - and that only works
+ * if no test depends on what an earlier one did. So each brings the device to
+ * the state it needs through ensureUnlocked(), which is idempotent, rather
+ * than relying on a previous test having unlocked it. `okt run <file>
+ * --isolate` runs them one per device session and reports any that cannot.
+ *
  * The CLI is also not one program. `version`, `fwversion`, `getlabels` and
  * `getkeylabels` are python-onlykey talking over the vendor interface, while
  * `ping` and `rng` hand off to `solo.cli.key()` - the Solo/FIDO2 CLI - which
@@ -52,16 +60,21 @@ describe('onlykey-cli, the read-only endpoints', {
   requires: ['crypto', 'client-access'],
   timeoutMs: 180000,
 }, () => {
-  let model = null;                          // what the kit's own unlock reported
-
   const okc = (argv, opts) => cli.run('onlykey-cli', argv, { timeoutMs: 45000, ...opts });
 
-  it('has the CLI', async ({ assert, skip }) => {
+  /*
+   * The precondition every test needs, and therefore not a test of its own: a
+   * `has the CLI` test would be skipped away by --test and leave the endpoint
+   * under debug failing with a module error instead of a stated skip.
+   */
+  const needCli = ({ skip }) => {
     if (!cli.venvPresent()) skip(`no venv at ${cli.VENV_BIN}`);
-    assert.ok(cli.binary('onlykey-cli'), 'onlykey-cli is missing from the venv');
-  });
+    cli.binary('onlykey-cli');                // throws, naming the venv, if absent
+  };
 
-  it('prints its own version with no device involved', async ({ device, assert, signal, log }) => {
+  it('prints its own version with no device involved',
+    async ({ device, assert, signal, log, skip }) => {
+      needCli({ skip });
     /*
      * `version` is a bare print - it never opens the device - and asserting the
      * device stayed silent is what makes that a fact about the command rather
@@ -82,7 +95,9 @@ describe('onlykey-cli, the read-only endpoints', {
       'the device said something while the CLI printed its own version');
   });
 
-  it('reports the firmware version the kit was told', async ({ device, assert, signal, log }) => {
+  it('reports the firmware version the kit was told',
+    async ({ device, assert, signal, log, skip }) => {
+      needCli({ skip });
     /*
      * The same cross-check 00-venv makes, but through the ACTUAL CLI binary
      * rather than through a python snippet that constructs OnlyKey() by hand.
@@ -95,7 +110,7 @@ describe('onlykey-cli, the read-only endpoints', {
      * characters of "UNLOCKED" removed - so the kit's own answer has to be
      * trimmed the same way for them to be comparable.
      */
-    model = await device.unlock(PINS.primary, { signal });
+    const model = await device.ensureUnlocked(PINS.primary, { signal });
 
     const result = await okc(['fwversion'], { signal });
     assert.equal(result.code, 0, `onlykey-cli fwversion failed: ${result.stderr}`);
@@ -109,7 +124,10 @@ describe('onlykey-cli, the read-only endpoints', {
   });
 
   it('lists the profile slots, including one this kit wrote',
-    async ({ device, assert, signal, log }) => {
+    async ({ device, assert, signal, log, skip }) => {
+      needCli({ skip });
+      await device.ensureUnlocked(PINS.primary, { signal });
+
       /*
        * Two clients, one slot. The kit writes a label over the in-process
        * vendor interface and the CLI reads it back over USB, so a pass says
@@ -148,7 +166,9 @@ describe('onlykey-cli, the read-only endpoints', {
         `the label this kit wrote is not in the CLI's list: ${JSON.stringify(lines)}`);
     });
 
-  it('lists the key slots', async ({ assert, signal, log }) => {
+  it('lists the key slots', async ({ device, assert, signal, log, skip }) => {
+    needCli({ skip });
+    await device.ensureUnlocked(PINS.primary, { signal });
     /*
      * A different message from getlabels - OKGETLABELS with the key-slot flag -
      * and a different fixed list: four RSA slots and sixteen ECC ones. The
@@ -168,6 +188,7 @@ describe('onlykey-cli, the read-only endpoints', {
   });
 
   it('reaches the device over FIDO too, with `ping`', async ({ assert, signal, log, skip }) => {
+    needCli({ skip });
     /*
      * `ping` is not python-onlykey at all - cli.py hands straight off to
      * solo.cli.key(), the Solo FIDO2 CLI, which finds the device through
@@ -200,6 +221,8 @@ describe('onlykey-cli, the read-only endpoints', {
        * writes into /dev/random, which is a change to the HOST rather than to
        * the device and is not this suite's to make.
        */
+      needCli({ skip });
+
       const first = await okc(['rng', 'hexbytes', '--count', '32'], { signal });
       log(`rng exited ${first.code}: ${JSON.stringify((first.stdout || first.stderr).slice(0, 200))}`);
 
