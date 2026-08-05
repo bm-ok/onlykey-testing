@@ -286,23 +286,25 @@ every test that lands here runs on every push once stage 2 is enabled.
 Plane 1, the vendor interface - 9 of 18 messages covered, plus two with a single
 branch each:
 
-- [ ] **The multi-report response path**, first, for the reason at the top of
-      this file - and NOT `OKGETRESPONSE`, which does not exist. That row sat
-      here across several sessions on a premise nobody had checked: `okcore.h`
-      defines the id, no dispatcher case handles it, no `.cpp` references it,
-      and every client has it commented out or absent. Large responses come back
-      as unsolicited consecutive 64-byte reports from `send_transport_response()`.
+- [x] **The multi-report response path** → `01-protocol/13-large-response`,
+      3 tests in 45s, `--isolate` 3/3 and `--reverse` green. NOT
+      `OKGETRESPONSE`, which does not exist - see the premises table above.
 
-      What to test instead: drive a large VENDOR response directly and assert it
-      arrives whole and in order. 1184 bytes (ML-KEM-768 public key, 19 reports)
-      and 3309 (ML-DSA-65 signature, 52 reports). The long one matters more - the
-      recorded failure was `RawHID.send2` returning 0 on a full TX queue with the
-      result unchecked, silently dropping a chunk, which is likelier at the
-      extreme than in the middle.
+      Both sizes driven and both whole: **1184 bytes / 19 reports** (ML-KEM-768
+      public key, generated on the device so it is the only source of the
+      answer) and **3309 / 52** (ML-DSA-65 signature, the longest response the
+      device produces). Report COUNT is asserted as well as byte count - they
+      say different things, and a device answering the same payload in a
+      different number of reports is a change worth knowing about.
 
-      Plus: an unrecognised vendor message id falls to the dispatcher's
-      `default:` and is handed to `recv_fido_msg()`. Worth pinning; it is the
-      kind of thing that changes silently.
+      Also the answer to "what does an unhandled vendor message id do": it is
+      handed to `recv_fido_msg()` and comes back as a **CTAPHID error frame**
+      `FF FF FF FF BF 00 01 0B` on the vendor interface. Not silence - the test
+      expected silence and was wrong, which is the better outcome, since silence
+      would have been consistent with the report being dropped.
+
+      First file to send `OKSETPRIV` and `OKSIGN` by hand rather than through
+      onlykey-cli or the web app's library.
 - [ ] **`OKGETPUBKEY` / `OKSIGN` / `OKDECRYPT`** across the six key types
       (ed25519, P256, secp256k1, curve25519, ML-KEM-768, X-Wing). What exists
       now is the DERIVED branches only - `OKGETPUBKEY` at slot 132

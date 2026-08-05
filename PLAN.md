@@ -14,10 +14,10 @@ Counts are as of 2026-08-05, both adapters green, hardware on `libraries@83353cf
 | | emulated | hardware |
 |---|---|---|
 | sanity | 50 passed, 0 failed | 50 passed, 0 failed |
-| section 1 | 68 passed, 0 failed | 59 passed, 0 failed, 9 skipped |
+| section 1 | 71 passed, 0 failed | 59 passed, 0 failed, 9 skipped + 3 untried |
 | section 2 | 101 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
 | section 3 | 72 passed, 0 failed (headless 50 + browser 22) | n/a - both tiers drive the emulator by design |
-| **whole tree** | **291 passed** | **96 passed, 9 skipped-with-reason** |
+| **whole tree** | **294 passed** | **96 passed, 9 skipped-with-reason** |
 
 The key is flashed with `libraries@83353cf` and sections 0 and 1 pass on it.
 Section 2 cannot run against a physical key at all (`client-access`), and
@@ -406,8 +406,8 @@ Nothing requests chunks. `send_transport_response()` (okcore.cpp:2821) loops
 so a 1184-byte ML-KEM public key is 19 reports and a 3309-byte ML-DSA signature
 is 52, all unsolicited.
 
-That path IS worth testing and is not, today - only sideways, by features that
-would blame themselves if it broke. It has a recorded failure mode: `RawHID.send2`
+That path is now tested directly by `01-protocol/13-large-response`, at both
+1184 bytes (19 reports) and 3309 (52). It has a recorded failure mode: `RawHID.send2`
 gives up instantly when the firmware's 4-packet TX queue is full and returned 0
 without sending, and the return value was not checked, so a full queue **silently
 dropped a chunk**. The comment at the fix site calls it the root cause of the
