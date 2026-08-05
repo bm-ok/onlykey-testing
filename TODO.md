@@ -11,9 +11,10 @@ The two rules that shaped it:
   it is proven now, so it is a page-debugging job rather than a coverage gap,
   and it is the one item here that cannot be finished without a browser in front
   of a human.
-- **`OKGETRESPONSE` goes early** even though it is unglamorous. Every large
-  payload comes back through it, so anything else that returns more than 64
-  bytes is testing it accidentally and would blame its own feature.
+- **The large-response path goes early** even though it is unglamorous.
+  Everything returning more than 64 bytes is testing it accidentally and would
+  blame its own feature. This used to say "`OKGETRESPONSE` goes early"; there is
+  no such mechanism - see the row below and PLAN's plane 1.
 
 Trap that does NOT apply here, worth knowing because the old kit's notes are
 full of it: slot collisions between files. `onlykey-alpha-testing` lost whole
@@ -253,6 +254,30 @@ opportunistically** - the sweep is worth more than a clean isolation record. See
       was set when none was. Worth deciding whether to pin the venv's `solo` and
       `fido2` back into step - see the row under Not tests.
 
+## Premises worth checking before picking a row up
+
+`OKGETRESPONSE` cost an hour whenever it came up because the row asserted a
+firmware mechanism that does not exist, and nothing in the row said whether
+anybody had looked. So: **rows that rest on a claim about the firmware say
+whether the claim has been verified.**
+
+Checked while correcting that one:
+
+| claim | status |
+|---|---|
+| `OKGETRESPONSE` returns large payloads | **FALSE** - no handler, no references |
+| `OKPING` is a live message | **FALSE** - no handler, no references |
+| `OKHMAC` / `OKWEBAUTHN` are live messages | **FALSE** - internal tags only |
+| "eighteen live message types" | **wrong** - fourteen are dispatched |
+| CTAP2 implements MakeCredential, GetAssertion, GetInfo, ClientPIN, Reset, GetNextAssertion, Cancel, CredMgmt | verified, all in `fido2/ctap.cpp` |
+| `hmac-secret` and `credProtect` are advertised | verified, in `ctap.cpp` / `ctap_parse.cpp` |
+| the derived branches have no `CRYPTO_AUTH` gate | verified, and asserted by `07-derived-xwing` and `15-age-file-interop` |
+| 28 slot fields under `OKSETSLOT` | **UNVERIFIED** - the CLI reaches 17 of them; where 28 came from is not recorded |
+| `OKFWUPDATE` can leave a key needing `okt flash` | **UNVERIFIED** - never driven past its confirmation prompt, deliberately |
+
+The two marked UNVERIFIED are left as they are rather than chased now. Neither
+blocks anything; both should be checked before a row is written against them.
+
 ## 2. Section 1 - the protocol surface nothing has ever touched
 
 Highest leverage in the kit: section 1 is the only device section CI can run, so
@@ -261,7 +286,23 @@ every test that lands here runs on every push once stage 2 is enabled.
 Plane 1, the vendor interface - 9 of 18 messages covered, plus two with a single
 branch each:
 
-- [ ] **`OKGETRESPONSE`** - first, for the reason at the top of this file.
+- [ ] **The multi-report response path**, first, for the reason at the top of
+      this file - and NOT `OKGETRESPONSE`, which does not exist. That row sat
+      here across several sessions on a premise nobody had checked: `okcore.h`
+      defines the id, no dispatcher case handles it, no `.cpp` references it,
+      and every client has it commented out or absent. Large responses come back
+      as unsolicited consecutive 64-byte reports from `send_transport_response()`.
+
+      What to test instead: drive a large VENDOR response directly and assert it
+      arrives whole and in order. 1184 bytes (ML-KEM-768 public key, 19 reports)
+      and 3309 (ML-DSA-65 signature, 52 reports). The long one matters more - the
+      recorded failure was `RawHID.send2` returning 0 on a full TX queue with the
+      result unchecked, silently dropping a chunk, which is likelier at the
+      extreme than in the middle.
+
+      Plus: an unrecognised vendor message id falls to the dispatcher's
+      `default:` and is handed to `recv_fido_msg()`. Worth pinning; it is the
+      kind of thing that changes silently.
 - [ ] **`OKGETPUBKEY` / `OKSIGN` / `OKDECRYPT`** across the six key types
       (ed25519, P256, secp256k1, curve25519, ML-KEM-768, X-Wing). What exists
       now is the DERIVED branches only - `OKGETPUBKEY` at slot 132
@@ -269,7 +310,11 @@ branch each:
       Both dispatch on the slot number, so the stored-slot branches - the ones
       that read a key out of flash, where all six key types live - are still
       untouched by either message.
-- [ ] **`OKPING`, `OKHMAC`, `OKWEBAUTHN`**.
+- [x] ~~**`OKPING`, `OKHMAC`, `OKWEBAUTHN`**~~ - **not testable, not defects.**
+      `OKPING` has no handler and no reference anywhere. `OKHMAC` and
+      `OKWEBAUTHN` are internal tags (`packet_buffer_details[0] = OKWEBAUTHN`),
+      never received. Three planned tests that dissolve on inspection; see
+      PLAN's plane 1 for the check.
 - [ ] **`OKSETPRIV` / `OKWIPEPRIV`** beyond the backup-passphrase slot.
 - [ ] **Slot fields beyond `LABEL` and `PASSWORD`** - 2 of 28 are written today.
       TOTP keys, the delay and next-key chaining, wipe mode, key layout, type

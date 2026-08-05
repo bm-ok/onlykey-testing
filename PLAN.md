@@ -351,14 +351,38 @@ There are **three planes**, not one, and only the first is well covered.
 
 ### Plane 1 — the vendor interface (RawHID2, usage `0xFFAB`)
 
-Eighteen live message types. `0xE8`-`0xEB` were the U2F cert/key messages and
-are removed in this firmware. This is what the CLI and the desktop app speak.
+**FOURTEEN message types are actually dispatched**, not eighteen. `okcore.h`
+defines eighteen; the switch in `okcore.cpp` has fourteen cases, and the other
+four are not incoming messages at all. `0xE8`-`0xEB` were the U2F cert/key
+messages and are removed in this firmware. This is what the CLI and the desktop
+app speak.
 
 | | messages |
 |---|---|
-| **covered (9)** | `OKPIN` `OKPINSD` `OKPINSEC` `OKCONNECT` `OKGETLABELS` `OKSETSLOT` `OKWIPESLOT` `OKSETPRIV` `OKRESTORE` |
+| **covered (11)** | `OKPIN` `OKPINSD` `OKPINSEC` `OKCONNECT` `OKGETLABELS` `OKSETSLOT` `OKWIPESLOT` `OKSETPRIV` `OKWIPEPRIV` `OKRESTORE` `OKSIGN` |
 | **one branch each (2)** | `OKGETPUBKEY` `OKDECRYPT` |
-| **not covered (7)** | `OKSIGN` `OKWIPEPRIV` `OKGETRESPONSE` `OKPING` `OKFWUPDATE` `OKHMAC` `OKWEBAUTHN` |
+| **not covered (1)** | `OKFWUPDATE` |
+| **NOT A MESSAGE (4)** | `OKGETRESPONSE` `OKPING` `OKHMAC` `OKWEBAUTHN` |
+
+That last row was four planned tests until somebody checked, and the check is
+worth repeating rather than trusting this table:
+
+```sh
+grep -n "case OKGETRESPONSE:" onlykey/okcore.cpp     # nothing
+```
+
+`OKGETRESPONSE` (`0xF2`) and `OKPING` (`0xF3`) have **no handler and no
+reference anywhere in the firmware** - zero hits across every `.cpp`. Every
+client agrees: python-onlykey never sends them, and `onlykey-api.js` carries
+`// const OKGETRESPONSE = 242;` commented out. `OKHMAC` (`0xF5`) and
+`OKWEBAUTHN` (`0xF6`) do appear once each, but as INTERNAL TAGS -
+`packet_buffer_details[0] = OKWEBAUTHN` - marking what a buffered packet is for.
+Neither is ever received.
+
+Sending any of the four is not a no-op, which is the one thing here worth
+testing. The dispatcher's `default:` hands any unrecognised vendor message id to
+`recv_fido_msg()`, so an unknown id on the vendor interface is interpreted as
+CTAPHID data.
 
 The two middle rows are a real distinction rather than a softened "no". Both
 messages dispatch on the slot number, and only the two RESERVED derivation
@@ -375,9 +399,21 @@ fields: `LABEL` and `PASSWORD`. Everything else - TOTP keys, the delay and
 next-key chaining, wipe mode, key layout, type speed, the challenge modes - is
 untouched.
 
-`OKGETRESPONSE` is worth calling out on its own: it is how anything larger than
-one 64-byte report comes back, so every large-payload path depends on it and
-nothing tests it.
+**How a large response actually comes back**, since this was written down wrong
+here for several sessions and put a phantom row first in the work order.
+Nothing requests chunks. `send_transport_response()` (okcore.cpp:2821) loops
+`for (i = 0; i < len; i += 64)` and pushes consecutive 64-byte reports itself,
+so a 1184-byte ML-KEM public key is 19 reports and a 3309-byte ML-DSA signature
+is 52, all unsolicited.
+
+That path IS worth testing and is not, today - only sideways, by features that
+would blame themselves if it broke. It has a recorded failure mode: `RawHID.send2`
+gives up instantly when the firmware's 4-packet TX queue is full and returned 0
+without sending, and the return value was not checked, so a full queue **silently
+dropped a chunk**. The comment at the fix site calls it the root cause of the
+intermittent truncated multi-packet responses seen all session. A dropped chunk
+is likelier at the extreme than in the middle, so the long response matters more
+than the short one.
 
 ### Plane 2 — CTAP2 proper (RawHID, usage `0xF1D0`)
 

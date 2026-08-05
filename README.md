@@ -127,6 +127,32 @@ debugging twice.
 It finds the emulator at `../../emulator` relative to its own root, with
 `OKEMU_ROOT` overriding. If neither resolves it says which paths it tried.
 
+### The firmware sources, and which copy compiles
+
+Three source areas compose in a fixed order, and a file present in more than one
+is taken from the LAST:
+
+| | staged | holds |
+|---|---|---|
+| 1 | `arduino-1.6.5-r5-teensy_127/arduino-1.6.5-r5/…/cores/teensy3` | the stock Teensy 3 core |
+| 2 | `OnlyKey-Firmware/*.c *.h` copied **over** it | OnlyKey's USB stack, shadowing core files |
+| 3 | `libraries/` | the vendored Arduino libraries |
+
+`emulator/scripts/stage.js` mirrors `in-docker-build.sh`, so this precedence is
+the shipped build's too - it is not an emulator quirk. Nothing under `onlykey/`
+is ever written to; the tree is assembled into `emulator/.stage`.
+
+**The trap: `usb_desc.h` exists in BOTH area 1 and area 2, and only OnlyKey's
+compiles.** The core copy is 356 lines, OnlyKey's is 469 and is the one carrying
+the `NUM_INTERFACE` / `SEREMU_INTERFACE` blocks. Editing the core copy looks
+applied - the file changes, the build succeeds - and does nothing at all. That
+matters directly for the production descriptor work in
+[PRODUCTION.md](PRODUCTION.md), whose whole subject is a commented-out block in
+`OnlyKey-Firmware/usb_desc.h`.
+
+The same shadowing applies to every `.c`/`.h` OnlyKey ships. Before editing a
+firmware source, check whether area 2 has its own copy.
+
 ## The verdict
 
 The exit code says what kind of problem it is without reading anything else:
