@@ -300,6 +300,24 @@ All measured, all load-bearing, all commented at the point that depends on them:
   a stale ready flag - `locked` on the emulator where it is instant,
   `unreachable` on a key where re-enumeration takes real time. Same race, two
   faces. Use `waitForReboot()`.
+- **An RSA slot holds P‖Q, and E is hardcoded to 65537.** There is no private
+  exponent on the device: `rsa_getpub()` multiplies the halves for N and
+  `rsa_sign()`/`rsa_decrypt()` recompute D, DP, DQ and QP every time. A key with
+  any other public exponent stores happily and then signs with a D it does not
+  have. Its "type" is the modulus size in 128-byte units, sharing one byte with
+  the feature flags - low nibble size, bit 5 decrypt, bit 6 sign.
+- **`buffer[6]` means two different things in two chunked sends.** Loading a KEY
+  (`OKSETPRIV` -> `rsa_priv_flash()`) puts the TYPE BYTE there on every report and
+  the firmware copies a fixed 57 bytes from each, counting its own way to the key
+  size with a global offset. An operation PAYLOAD (`OKSIGN`/`OKDECRYPT` ->
+  `process_packets()`) puts the CONTINUATION MARKER there - `0xFF` while more
+  follows, the last chunk's own length at the end. Swap them and you get a
+  255-byte packet, or "Error invalid RSA type".
+- **A wiped RSA slot still reports a key.** `rsa_priv_flash()` returns from its
+  `wipe` branch before writing the key type, so the type survives in EEPROM, and
+  `OKGETPUBKEY` goes on publishing a modulus computed from 256 decrypted zero
+  bytes. The ECC path writes its type byte on the way in, so an ECC wipe really
+  does empty the slot. Pinned by `19-rsa-keys`, which will fail when it is fixed.
 - **The LOCK keypress types Super+L at the host** before rebooting
   (`lock_ok_and_screen`), so on a workstation it locks your screen. It is not a
   cheaper relock than a reboot - it *ends* in `CPU_RESTART()`.
@@ -406,6 +424,11 @@ appears to be waiting for one press - and then no press satisfies the clause and
 the operation answers `Error incorrect challenge`.
 
 `01-protocol/14-stored-keys.test.js` uses this to drive `OKGETPUBKEY`, `OKSIGN`
-and `OKDECRYPT` against all six key types, so **crypto vectors against stored
+and `OKDECRYPT` against all six ECC key types, so **crypto vectors against stored
 keys are built**; the derived paths are covered by `02-cli/07-derived-xwing` and
 `02-cli/15-age-file-interop`.
+
+**Slots 1-4 are RSA and the same single-press mode covers them**, which is not
+obvious from either field name: `done_process_packets()` loads
+`stored_key_challenge_mode` when the slot is `< 5` OR 101..116, and `< 5` *is*
+the RSA range. `01-protocol/19-rsa-keys.test.js` relies on it.

@@ -16,12 +16,19 @@ wearing the present tense - and the two adapters drift apart at different rates.
 | | emulated | last run | hardware | last run |
 |---|---|---|---|---|
 | sanity | 50 passed, 0 failed | 2026-08-05 17:35Z | 50 passed, 0 failed | 2026-08-05 16:12Z |
-| section 1 | 96 passed, 0 failed | 2026-08-05 17:35Z | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
+| section 1 | 103 passed, 0 failed | 2026-08-05 18:00Z | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
 | section 2 | 101 passed, 0 failed (gadget) | 2026-08-05 17:35Z | skipped - `client-access` | n/a |
 | section 3 | 72 passed, 0 failed (headless 50 + browser 22) | 2026-08-05 17:35Z | n/a - both tiers drive the emulator by design | n/a |
-| **whole tree** | **319 passed, 0 failed, 1 skipped** | 2026-08-05 17:35Z | **118 passed, 9 skipped-with-reason** | 2026-08-05 16:24Z |
+| **whole tree** | **326 passed, 0 failed, 1 skipped** | 2026-08-05 18:00Z | **118 passed, 9 skipped-with-reason** | 2026-08-05 16:24Z |
 
-**Both columns are now single sweeps**, which they were not before:
+**Section 1's 103 is the 17:35Z sweep's 96 plus `19-rsa-keys`' 7, measured on
+its own at 18:00Z** - so it is arithmetic again for one file, which is what the
+warning below is about. The 7 are green three ways: natural order, `--isolate`
+7/7, and `--reverse`. Neither adapter has run the whole tree since, and the
+hardware column has not seen this file at all - it is section 1, so it is
+hardware-capable, but nothing has been plugged in.
+
+**Both columns were single sweeps as of 17:35Z**, which they had not been before:
 
 - **Emulated**: `okt run` with no target, one process, all four sections in
   order. 319 passed, 0 failed, 1 skipped, 879s, run `20260805-172107-935299`.
@@ -262,7 +269,7 @@ a section that does not exist yet.
 | ✅ | `09-fido2-connect` — CTAP2 handshake | protocol | `09-fido-ctaphid` | plus the locked-device case, which the old kit did not check |
 | ✅ | `13-fido2-standard-ceremony` — makeCredential/getAssertion | protocol | `11-fido2-ceremony` | now with no browser and no hidapi, and the signature verified in pure JS |
 | ⚠️ | `08-backup-hmac` — backup and HMAC settings (TC-13) | protocol | `10-backup-restore` | the **backup half is more than carried over**: the old kit called a full round trip untestable, and this does it. The HMAC settings half is not covered |
-| ⚠️ | `12-non-pqc-regression` — slot labels, classic ECC + RSA (TC-15) | protocol | `08-slot-keyboard` | labels and slot storage covered; classic ECC and RSA key handling is not |
+| ✅ | `12-non-pqc-regression` — slot labels, classic ECC + RSA (TC-15) | protocol | `08-slot-keyboard`, `14-stored-keys`, `19-rsa-keys` | **now whole.** Labels and slot storage by the first, the classic ECC curves by the second, and RSA-2048 by the third - store, publish, sign, decrypt, both feature-bit refusals, and the wipe pinned as it ships |
 | ✅ | `01-pqc-keygen` — X-Wing keygen (TC-04) | cli | `01-pqc-keygen` | plus the readback the old kit never did, which is what found **two firmware bugs** (`libraries@83353cf`) that made every generated PQC key unusable |
 | ✅ | `02-pqc-slot` — PQC slot selection (TC-06) | cli | `02-pqc-slot` | and the reserved-slot case now proves the plugin refused on the ARGUMENT, by asserting the device primed no challenge |
 | ✅ | `03-pqc-decrypt` — X-Wing encrypt/decrypt (TC-05) | cli | `03-pqc-decrypt` | real `age`, encrypted on the host, decrypted on the device, byte for byte — and the end-to-end proof that `libraries@83353cf` fixed something real, since both bugs surfaced here as "no identity matched any of the recipients" |
@@ -289,7 +296,9 @@ desktop app).
 section 4 is the one part of this kit with no ancestor at all — which is also
 why it is last.
 
-**11 of 19 carried over, 2 of those partially.**
+**12 of 19 carried over, 1 of those partially** - `08-backup-hmac`, whose backup
+half is more than carried over and whose HMAC settings half is not covered at
+all. `12-non-pqc-regression` was the other partial and is now whole.
 
 The sections were checked against what each file actually EXECUTES, not what its
 name suggests, and that moved five rows. The whole PQC cluster - `01`, `02`,
@@ -303,7 +312,7 @@ What that leaves is lopsided, and worth knowing before picking anything up:
 | section | open | blocked on |
 |---|---|---|
 | sanity | 0 | done |
-| protocol | 1 (partial) | nothing - `10`'s transport is done; the derive command is not |
+| protocol | 1 (partial) | nothing - it is `08-backup-hmac`'s HMAC settings half, which is a test to write |
 | cli | 0 | done - every carried-over row has a replacement |
 | gui | 2 | a display, which now exists - `vault`/`chat` are placeholders, not gaps |
 
@@ -423,12 +432,22 @@ testing. The dispatcher's `default:` hands any unrecognised vendor message id to
 `recv_fido_msg()`, so an unknown id on the vendor interface is interpreted as
 CTAPHID data.
 
-`OKGETPUBKEY`, `OKSIGN` and `OKDECRYPT` dispatch on the SLOT number, and the
-stored-slot branches - the ones that read a key out of flash, where all six key
-types live - are covered by `01-protocol/14-stored-keys`, which drives all three
-messages against ed25519, nist256p1, secp256k1, curve25519, ML-KEM-768 and
-X-Wing. The derivation slots are covered separately: 132 by `08-lib-agent-ssh`
-and 128 by `07-derived-xwing` and `15-age-file-interop`.
+`OKGETPUBKEY`, `OKSIGN` and `OKDECRYPT` dispatch on the SLOT number, and there
+are **three** stored-slot branches, not one - which is why two files rather than
+one cover them:
+
+| slots | branch | covered by |
+|---|---|---|
+| 101..116 | `okcore_flashget_ECC()`, `okcrypto_ecdsa_eddsa()` and the PQC pair | `14-stored-keys` - ed25519, nist256p1, secp256k1, curve25519, ML-KEM-768, X-Wing |
+| 1..4 | `okcore_flashget_RSA()`, `okcrypto_rsasign()` / `okcrypto_rsadecrypt()` | `19-rsa-keys` - RSA-2048 |
+| 1..4 with `KEYTYPE_PQC_PGP` | the same slots, routed to `okpqc_*` before the RSA branch | `13-large-response`, `02-cli/06-composite-ops` |
+
+That third row is why `13-large-response` writing RSA slot 1 proved nothing about
+RSA: `okcrypto_sign()` checks `(type & 0x0F) == KEYTYPE_PQC_PGP` and leaves for
+`okpqc_sign()` before it ever reaches `is_bit_set(features, 6)`.
+
+The derivation slots are covered separately: 132 by `08-lib-agent-ssh` and 128 by
+`07-derived-xwing` and `15-age-file-interop`.
 
 **Every message in plane 1 is now covered except `OKFWUPDATE`**, which is gated
 `emulated` and driven only to its interlocks, deliberately - see TODO.
@@ -710,14 +729,23 @@ and stays in section 1, which is what makes it CI-able.
 **Why:** half the vendor interface has never had a byte sent at it, and the
 slot fields are worse — two of twenty-eight.
 
-- [ ] `OKGETRESPONSE` first: every large payload depends on it
-- [ ] `OKGETPUBKEY` / `OKSIGN` / `OKDECRYPT` across the six key types
-- [ ] `OKSETPRIV` / `OKWIPEPRIV` beyond the backup-passphrase slot
-- [ ] `OKPING`, `OKHMAC`, `OKWEBAUTHN`
-- [ ] Slot fields beyond label and password: TOTP, the delay and next-key
-      chaining, wipe mode, key layout, type speed, the challenge modes
-- [ ] `OKFWUPDATE` last, and probably emulated-only — it is the one message
-      that can leave a key needing `okt flash`
+- [x] ~~`OKGETRESPONSE` first: every large payload depends on it~~ — no such
+      mechanism; the path is `send_transport_response()` pushing unsolicited
+      reports, tested by `13-large-response`
+- [x] `OKGETPUBKEY` / `OKSIGN` / `OKDECRYPT` across the six key types — five in
+      `14-stored-keys`, and RSA in `19-rsa-keys`. **All six are now covered.**
+- [x] `OKSETPRIV` / `OKWIPEPRIV` beyond the backup-passphrase slot — and the RSA
+      wipe is pinned as it ships: `rsa_priv_flash()` returns from its `wipe`
+      branch before writing the key type, so the slot keeps reporting a key. See
+      TODO
+- [x] ~~`OKPING`, `OKHMAC`, `OKWEBAUTHN`~~ — not messages; internal tags and a
+      dead id
+- [x] Slot fields beyond label and password — 27 of 29 cases, by
+      `11-cli-settings`, `12-cli-slots` and `13-cli-lifecycle`. Left: case 10
+      (`YUBIAUTH`) and case 29
+- [ ] `OKFWUPDATE` last, emulated-only and mechanically gated — it locks the
+      bootloader and permanently converts a developer key into a production key,
+      so it is driven only to its interlocks and never past them
 
 ## Stage 6 — the sections that need a display
 

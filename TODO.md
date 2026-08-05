@@ -23,11 +23,17 @@ implies:
 
 | | what | why it is next |
 |---|---|---|
-| 1 | RSA key handling (§2 below) | the only key type of six with no coverage at all, and two GUI pages depend on it |
-| 2 | the two never-tested PINs (§3) | provisioned on every single run and exercised once, negatively |
-| 3 | `loadpqc` / `loadkey` accepting paths (§1) | the last section-2 row; a wiring job, the pieces exist |
-| 4 | the remaining pages (§4) | needs a browser and a human for `13-pgp-pqc` |
-| 5 | section 4, the app (§5) | no ancestor anywhere; genuinely last |
+| 1 | the two never-tested PINs (§3) | provisioned on every single run and exercised once, negatively |
+| 2 | `loadpqc` / `loadkey` accepting paths (§1) | the last section-2 row; a wiring job, the pieces exist |
+| 3 | the remaining pages (§4) | needs a browser and a human for `13-pgp-pqc` |
+| 4 | section 4, the app (§5) | no ancestor anywhere; genuinely last |
+
+**RSA key handling came off the top of this table** on 2026-08-05 →
+`01-protocol/19-rsa-keys`, 7 tests in 104s, `--isolate` 7/7 and `--reverse`
+green. Every key kind the firmware stores now has coverage - the six ECC
+`KEYTYPE_*` values by `14-stored-keys` and RSA, which is not one of them, by this
+file. And `18-gui-encrypt-decrypt`'s prerequisite is met: the pair of slots
+`onlykey-pgp.js` hardcodes is loaded, used and asserted about. See §2.
 
 **When a file lands, update its section's `last run` in [PLAN.md](PLAN.md)'s
 counts table.** The emulated and hardware columns carry separate dates because
@@ -302,6 +308,21 @@ Checked while correcting that one:
 | 28 slot fields under `OKSETSLOT` | **WRONG twice** - `set_slot()` dispatches **29** cases, and only **16** are per-slot; the other 13 are device-wide settings. 28 is the size of python's `MessageField` enum, which is where the number came from |
 | `OKFWUPDATE` can leave a key needing `okt flash` | **WRONG, and worse than stated** - it locks the bootloader and permanently converts a developer key into a production key. Maintainer's understanding, deliberately NOT verified experimentally |
 
+Checked while writing `19-rsa-keys`, all in `libraries/onlykey`:
+
+| claim | status |
+|---|---|
+| python-onlykey frames RSA-2048 as five `OKSETPRIV` chunks | verified, `client.py:563` - five slices of 114 hex characters, nine for RSA-4096 |
+| `onlykey-pgp.js` needs RSA slot 1 to decrypt and slot 2 to sign | verified, `slotid()` returns `slot == OKSIGN ? 2 : 1` and adds 100 only when `is_ecc` |
+| `okcrypto_rsasign()` / `okcrypto_rsadecrypt()` had never had a byte sent at them | verified - `13-large-response` writes RSA slot 1, but as `KEYTYPE_PQC_PGP`, which `okcrypto_sign()` routes to `okpqc_sign()` before the RSA branch |
+| an RSA slot holds a private key | **NO** - it holds **P‖Q and nothing else**. `rsa_getpub()` multiplies the halves for N and `rsa_sign()`/`rsa_decrypt()` recompute D, DP, DQ and QP every time, **with E hardcoded to `0x10001`**. A key whose exponent is not 65537 stores fine and then signs with a D it does not have |
+| RSA `type` is a key type like the ECC ones | **NO** - it is the modulus size in 128-byte units (1..4 for 1024..4096), sharing one byte with the feature flags: low nibble size, bit 5 decrypt, bit 6 sign |
+| the single-press `stored_key_challenge_mode` covers only ECC slots | **NO, it covers RSA too** - `done_process_packets()` loads it when the slot is `< 5` OR 101..116, and `< 5` **is** the RSA slot range. 14-stored-keys' byte-1 trick works here unchanged |
+| `OKGETPUBKEY` takes any field on an RSA slot | **NO** - `okcrypto_getpubkey()` takes the RSA branch on `buffer[5] < 5 && !buffer[6]`. Any other field falls through to the ECC branch and reads a slot that does not exist |
+| the key-load and operation chunk framings are the same | **NO, and this is the trap.** The KEY going in carries the **type byte** in `buffer[6]` on all five reports and `rsa_priv_flash()` copies a fixed 57 bytes from each, counting its own way to 256 with a global offset. The OPERATION payload carries the **continuation marker** - `0xFF` while more follows, the final chunk's length on the last. Swapping them gives a 255-byte packet or "Error invalid RSA type" |
+| `OKSIGN` takes any digest on an RSA slot | **NO** - exactly 28, 32, 48 or 64 bytes, and the length PICKS THE HASH: `rsa_sign()` maps them onto SHA-224/256/384/512. And it is refused AFTER the confirmation, so the press is spent on a request the device was always going to refuse |
+| "RSA is the one key type of six with no coverage" | **LOOSE, and this file's own opening said it.** `okcore.h`'s `KEYTYPE_*` values are 1..6 and **all six are ECC** - ed25519, P256, secp256k1, curve25519, ML-KEM-768, X-Wing - and all six were already covered by `14-stored-keys`. RSA is a **seventh key kind outside that enum**, with its own EEPROM accessor (`okeeprom_eeget_rsakey` rather than `..._ecckey`), its own flash sector, and a "type" that means modulus size rather than algorithm. The gap was real; the arithmetic describing it was not |
+
 `OKFWUPDATE` is the exception to "check it": it is not to be verified
 experimentally, and the gate is mechanical instead - see its row below.
 
@@ -456,21 +477,67 @@ And the two carried-over rows that came over only partly:
 - [ ] **HMAC settings** - the half of old `08-backup-hmac` that
       `01-protocol/10-backup-restore` did not take. The backup half is more than
       carried over; this half is not covered at all.
-- [ ] **RSA key handling** - the half of old `12-non-pqc-regression` still open,
-      and now the single largest gap in plane 1. **The classic ECC half is
-      done**: `01-protocol/14-stored-keys` drives OKGETPUBKEY, OKSIGN and
-      OKDECRYPT against ed25519, nist256p1, secp256k1 and curve25519 in a stored
-      slot, each verified against node:crypto. RSA is the one key type of the six
-      with no coverage at all - `okcrypto_rsasign()` and `okcrypto_rsadecrypt()`
-      have never had a byte sent at them.
+- [x] **RSA key handling** - the other half of old `12-non-pqc-regression` →
+      `01-protocol/19-rsa-keys`, 7 tests in 104s, first run green, `--isolate`
+      7/7 and `--reverse` green. **Every key kind the firmware stores now has
+      coverage** - the six ECC `KEYTYPE_*` values by `14-stored-keys` and RSA,
+      which is not one of them, by this file. `18-gui-encrypt-decrypt`'s
+      prerequisite is met: RSA slot 1 holds a decrypt key and slot 2 a sign key,
+      the pair `onlykey-pgp.js`'s `slotid()` hardcodes.
 
-      Two things make this the next row rather than a later one. It is the
-      prerequisite for `18-gui-encrypt-decrypt` below, whose Sign/Decrypt modes
-      need a classic RSA key in **RSA slot 1 (decrypt) and slot 2 (sign)**,
-      hardcoded in `onlykey-pgp.js`'s `slotid()`. And the send path is already
-      solved: python-onlykey's `setkey()` shows RSA-2048 going in as FIVE
-      OKSETPRIV chunks of 114 hex characters each, RSA-4096 as nine - the same
-      framing `13-large-response` uses for the composite blob.
+      Every answer checked against something that is not the device. The
+      modulus against OpenSSL's own N for the same key AND against P * Q
+      multiplied out in BigInt; the signature verified by node:crypto against a
+      public key built from **the modulus the device published**, not from the
+      host's key object; the plaintext sealed by node:crypto to that same
+      published modulus, so a device decrypting with the wrong key returns noise.
+
+      Almost entirely on the vendor surface - every answer and every refusal
+      arrives where a client can see it. The console is read for "Encrypted
+      Buffer" only, for press timing, plus two secondary "nothing was primed"
+      counts.
+
+      The premises it corrected are in the table above and are worth reading
+      before touching RSA again: the slot holds **P‖Q with E hardcoded to
+      65537**, `type` is the **modulus size in 128-byte units** sharing a byte
+      with the feature flags, the two chunk framings mean **different things in
+      `buffer[6]`**, and the single-press challenge mode **covers RSA slots**
+      because `done_process_packets()` tests `slot < 5`.
+
+      **Two findings, one pinned as a test.** `OKSIGN` on a decrypt-only slot
+      and `OKDECRYPT` on a sign-only slot are refused BY NAME and **without
+      priming a confirmation**, which is the security property arriving where a
+      client sees it. And the pinned one: see the OKWIPEPRIV row below.
+- [x] **`OKWIPEPRIV` on an RSA slot does not clear the slot's key type** -
+      pinned as it ships by `19-rsa-keys`'s last test, which is written so that
+      **it fails the day this is fixed**. `rsa_priv_flash()` handles `wipe` first
+      and returns before it ever reaches `okeeprom_eeset_rsakey()`, so the flash
+      region is zeroed and the type byte survives in EEPROM. The ECC path has the
+      opposite shape - `ecc_priv_flash()` writes the type byte unconditionally on
+      the way in, so an ECC wipe records type 0 and the slot really does read as
+      empty afterwards.
+
+      What a client sees: a wiped RSA slot does NOT answer "Error no RSA Private
+      Key set in this slot" the way a never-written one does.
+      `okcore_flashget_RSA()` believes the stale type, decrypts 256 zero bytes
+      into P and Q, multiplies them and publishes the result - so the slot goes
+      on reporting a 2048-bit key that is not a key. Measured: `6cd48841…`
+      where the real modulus had been.
+- [ ] **DECIDE: is the RSA slot tail worth a test?** Found by reading, **not
+      verified experimentally**, and it is the one thing here that wants the
+      maintainer's judgement. `rsa_priv_flash()` encrypts only `keysize` bytes
+      but then copies all `MAX_RSA_KEY_SIZE` (512) bytes of the
+      `rsa_private_key` global into the flash sector - and that global is where
+      `okcore_flashget_RSA()` decrypts keys **in place**. So storing a smaller
+      key (a 1024-bit one, 128 bytes) after any larger key has been READ writes
+      the previous key's **plaintext** P‖Q into flash past the encrypted region.
+
+      Same profile key either way, so it is not a cross-user leak - it is
+      unencrypted private key material at rest. Demonstrating it needs a
+      1024-bit key stored after a 2048-bit read, and the only oracle is
+      `flash.bin` rather than any client surface, so it would be an
+      emulated-only file gated on `storage-files`. Deliberately left out of
+      `19-rsa-keys`: the subject is the storage layout, not RSA key handling.
 
 ## 3. The PINs provisioned every run and never tested
 
@@ -558,7 +625,8 @@ that file skipped and never touched the key.
 ## Isolation debt
 
 Measured 2026-08-05 with `okt run <file> --isolate` across the tree:
-**40 files, 232 tests - 17 files pass, 23 fail, 148/232 tests (64%) stand alone.**
+**41 files, 239 tests - 18 files pass, 23 fail, 155/239 tests (65%) stand alone.**
+(`19-rsa-keys` is the +1 file and +7 tests, passing its gate as a new file must.)
 
 Retrofitted **opportunistically**, when a file is being worked on for another
 reason. Not a project of its own: the sweep is worth more than a clean
@@ -573,7 +641,7 @@ sometimes changes what the file is testing.
 | section | files pass/total | tests alone |
 |---|---|---|
 | `00-sanity` | **7/7** | 50/50 |
-| `01-protocol` | 3/13 | 38/68 |
+| `01-protocol` | 4/14 | 45/75 |
 | `02-cli` | 4/11 | 33/64 |
 | `03-gui` headless | 3/8 | 26/49 |
 | `04-app` | 1/1 | 1/1 |
