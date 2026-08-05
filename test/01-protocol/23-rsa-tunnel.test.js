@@ -77,7 +77,9 @@ const CHUNK = 57;                       // vendor-interface payload per report
 const REQUEST_CHUNK = 228;              // u2fSignBuffer's 57 * 4
 const MAX_LARGE_RESP_CHUNK = 512;       // ok_extension.cpp:116
 const FEATURE_SIGN = 64;
+const FEATURE_DECRYPT = 32;
 const SLOT_SIGN = 2;                    // slotid() sends OKSIGN here
+const SLOT_DECRYPT = 1;                 // ...and everything else here
 const FIELD_STORED_CHALLENGE = 22;
 const PRIMED = /Encrypted Buffer/g;
 
@@ -113,7 +115,9 @@ describe('classic RSA over the WebAuthn tunnel', {
   }
 
   /** Load an RSA key into a slot and leave config mode. Vendor interface. */
-  async function loadKey(device, { bits, typeNibble }, { signal, assert, log }) {
+  async function loadKey(device, {
+    bits, typeNibble, slot = SLOT_SIGN, feature = FEATURE_SIGN,
+  }, { signal, assert, log }) {
     const key = keypair(bits);
     await pqc.readyForKeygen(device, { signal });
 
@@ -127,7 +131,7 @@ describe('classic RSA over the WebAuthn tunnel', {
     since = device.mark(IFACE.VENDOR);
     for (let i = 0; i < key.pq.length; i += CHUNK) {
       device.sendVendor({
-        msg: okmsg.MSG.OKSETPRIV, slot: SLOT_SIGN, field: typeNibble | FEATURE_SIGN,
+        msg: okmsg.MSG.OKSETPRIV, slot, field: typeNibble | feature,
         payload: key.pq.subarray(i, i + CHUNK),
       });
       await device.sleep(150, { signal });
@@ -141,10 +145,10 @@ describe('classic RSA over the WebAuthn tunnel', {
     await device.ensureUnlocked(PINS.primary, { signal });
 
     since = device.mark(IFACE.VENDOR);
-    device.sendVendor({ msg: okmsg.MSG.OKGETPUBKEY, slot: SLOT_SIGN, field: 0 });
+    device.sendVendor({ msg: okmsg.MSG.OKGETPUBKEY, slot, field: 0 });
     const published = await collectVendor(device, since, key.pq.length, { signal });
     assert.bytes(published, key.n, 'the slot published a different modulus than it was given');
-    log(`${bits}-bit key loaded; modulus ${published.length} bytes`);
+    log(`${bits}-bit key loaded into slot ${slot}; modulus ${published.length} bytes`);
     return { ...key, published };
   }
 
@@ -215,8 +219,12 @@ describe('classic RSA over the WebAuthn tunnel', {
     const message = Buffer.from(`okt tunnel rsa ${key.pq.length * 8}`);
     const digest = crypto.createHash('sha256').update(message).digest();
 
-    const primed = device.log.count(PRIMED);
+    /* CLEAR FIRST, THEN COUNT. Counting before the clear reads a marker the
+     * PREVIOUS test left, so the wait below asks for one more than can arrive and
+     * times out - which passes alone and fails in sequence. Caught by the
+     * natural-order run, which is what it is for. */
     device.log.clear();
+    const primed = device.log.count(PRIMED);
 
     const { nextOpt3 } = await sendSealed(ctap, transitKey, {
       cmd: okmsg.MSG.OKSIGN, slot: SLOT_SIGN, payload: digest,
@@ -267,6 +275,30 @@ describe('classic RSA over the WebAuthn tunnel', {
        * two things no client reports. THE boundary case: 512 bytes is both
        * MAX_LARGE_RESP_CHUNK and MAX_RSA_KEY_SIZE.
        */
+      /*
+       * GATED OFF BY DEFAULT, AND THE GATE IS THE BUG REPORT. Loading a 4096-bit
+       * key aborts the firmware - `rsa_priv_flash()`'s type-4 branch guards on
+       * `packet_buffer_offset <= 456` and then memcpy's a literal 57, so the
+       * ninth chunk writes index 512 of a 512-byte array. See
+       * FINDING-rsa4096-overflow.md.
+       *
+       * It cannot be pinned as a passing test the way a wrong ANSWER can: the
+       * failure kills the device host, and the runner classifies that as a
+       * run-level abort before any assertion executes, so nothing inside a test
+       * can observe it. Left ungated it aborts every run of this file and both
+       * its order gates.
+       *
+       * So it skips with the defect named, which puts it in every run's skip list
+       * rather than hiding it, and it runs the moment somebody sets the variable
+       * after fixing the overflow - at which point it becomes the boundary test
+       * this file was written for. Flipping this to "run it and exclude the file
+       * from full-tree runs" is a one-line change if that is preferred.
+       */
+      if (process.env.OKT_EXPECT_RSA4096_FIX !== 'yes') {
+        skip('loading a 4096-bit RSA key overflows rsa_private_key by one byte and aborts ' +
+          'the firmware (FINDING-rsa4096-overflow.md); set OKT_EXPECT_RSA4096_FIX=yes once ' +
+          'rsa_priv_flash() clamps the copy to keysize - offset');
+      }
       if (!transit.probe().ok) skip(transit.probe().why);
       const self = transit.selfTest();
       assert.ok(self.ok,
@@ -318,5 +350,91 @@ describe('classic RSA over the WebAuthn tunnel', {
       assert.equal(got.chunks.length, 1, 'a 256-byte response is half a chunk');
       assert.ok(crypto.verify('sha256', got.message, verifier(key.published), got.bytes),
         'the signature does not verify against the published modulus');
+    });
+
+  it('an RSA-2048 decrypt is TWO keyhandles, and last_request_opt3 no longer drops the first',
+    async ({ device, assert, signal, log, skip }) => {
+      /*
+       * SURFACE: FIDO for the operation, vendor for the modulus, console for the
+       * priming and for the received-bytes discriminator.
+       *
+       * THE SECOND LEAD, from ok_extension.cpp:150. `last_request_opt3` used to
+       * live in `packet_buffer_details[3]`, which `process_packets()` overwrites
+       * with TWO RANDOM BYTES the moment a message completes:
+       *
+       *     RNG2(packet_buffer_details + 3, 2);   // response channel id
+       *
+       * Two meanings on one byte and the random one wins, so the next
+       * multi-keyhandle request met a random 0-255 threshold and its early chunks
+       * were dropped SILENTLY - no error, no print. The device hashed whatever
+       * survived and then asked for challenge digits over bytes the host never
+       * sent. Measured upstream on the PQC path: a 1088-byte ML-KEM ciphertext
+       * arrived as its final 176-byte chunk alone.
+       *
+       * The comment says it "affects the classic RSA path identically - any
+       * payload needing more than one keyhandle", and that it hid from humans
+       * because `wipetasks()` zeroes the byte on a 5-second timer while a person
+       * takes longer than that between operations. A scripted caller does not, so
+       * this test is exactly the caller that would have seen it.
+       *
+       * A DECRYPT IS WHERE CLASSIC RSA CROSSES THE KEYHANDLE BOUNDARY, which a
+       * signature never does: a signature request is a 32-byte digest, one
+       * keyhandle. A PKCS#1 v1.5 ciphertext is a whole modulus - 256 bytes for
+       * RSA-2048 - so it goes as 228 + 28, two keyhandles with opt3 1 then 2. The
+       * fix moved the high-water mark to its own static, and what this asserts is
+       * that BOTH chunks land: the device's own dump must be the full 256 bytes,
+       * not the 28-byte tail.
+       */
+      if (!transit.probe().ok) skip(transit.probe().why);
+
+      const key = await loadKey(device,
+        { bits: 2048, typeNibble: 2, slot: SLOT_DECRYPT, feature: FEATURE_DECRYPT },
+        { signal, assert, log });
+
+      const secret = crypto.randomBytes(32);
+      const sealed = crypto.publicEncrypt({
+        key: verifier(key.published), padding: crypto.constants.RSA_PKCS1_PADDING,
+      }, secret);
+      assert.equal(sealed.length, 256, 'a PKCS#1 v1.5 ciphertext is one modulus long');
+      const keyhandles = Math.ceil(sealed.length / REQUEST_CHUNK);
+      log(`ciphertext ${sealed.length} bytes over ${keyhandles} keyhandle(s)`);
+      assert.equal(keyhandles, 2, 'this test is pointless unless the request spans two keyhandles');
+
+      const ctap = new Ctap2(device, { signal });
+      await ctap.init();
+      const transitKey = await handshake(device, ctap, { signal, assert, log });
+
+      /* Clear first, then count - see signOverTunnel(). */
+      device.log.clear();
+      const primed = device.log.count(PRIMED);
+
+      const { nextOpt3 } = await sendSealed(ctap, transitKey, {
+        cmd: okmsg.MSG.OKDECRYPT, slot: SLOT_DECRYPT, payload: sealed,
+      }, { timeoutMs: 30000, signal });
+
+      /*
+       * The assertion this test exists for. If the high-water mark were still
+       * being clobbered, the first keyhandle would be dropped and this would be
+       * 28 bytes - the tail alone - which is the exact shape the comment
+       * describes.
+       */
+      await device.log.waitForCount(PRIMED, primed + 1, { timeoutMs: 30000, signal });
+      const received = pqc.packetFromConsole(device);
+      log(`device received ${received && received.length} bytes of the ${sealed.length} sent`);
+      assert.equal(received && received.length, sealed.length,
+        `the device accumulated ${received && received.length} bytes of a ${sealed.length}-byte ` +
+        'request - a short count means an early keyhandle was dropped silently, which is ' +
+        'the last_request_opt3 failure from ok_extension.cpp:150');
+      assert.bytes(received, sealed, 'the device received different bytes than were sent');
+
+      device.press(1);
+      const answer = await poll(ctap, transitKey, 32, { opt3: nextOpt3 },
+        { timeoutMs: 30000, signal });
+      const plaintext = transit.box(transitKey, answer.bytes).subarray(0, 32);
+      log(`device plaintext ${plaintext.toString('hex')}`);
+      log(`expected         ${secret.toString('hex')}`);
+
+      assert.bytes(plaintext, secret,
+        'the device did not recover the secret sealed to its own published modulus');
     });
 });
