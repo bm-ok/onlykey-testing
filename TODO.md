@@ -5,21 +5,36 @@ the reasoning behind every row here; [README.md](README.md) is how to use what
 exists. This file is the order to do things in, and what each one needs.
 
 Ordered by what is unblocked and what unblocks the most, not by section number.
-
-**When a file lands, update its section's `last run` in [PLAN.md](PLAN.md)'s
-counts table** - the emulated and hardware columns each carry their own date,
-because they drift apart and a count with no date reads as current when it is
-not. Section 3's is the oldest and is flagged there as the one to re-measure.
-The two rules that shaped it:
+Two rules shaped that order:
 
 - **The remaining pages go last.** `13-pgp-pqc` in particular - everything under
   it is proven now, so it is a page-debugging job rather than a coverage gap,
   and it is the one item here that cannot be finished without a browser in front
   of a human.
-- **The large-response path goes early** even though it is unglamorous.
-  Everything returning more than 64 bytes is testing it accidentally and would
-  blame its own feature. This used to say "`OKGETRESPONSE` goes early"; there is
-  no such mechanism - see the row below and PLAN's plane 1.
+- **The large-response path went early** even though it was unglamorous, and it
+  is done. Everything returning more than 64 bytes had been testing it
+  accidentally and would have blamed its own feature. This used to say
+  "`OKGETRESPONSE` goes early"; there is no such mechanism - see PLAN's plane 1.
+
+**WHERE THE WORK ACTUALLY IS NOW.** Sections 1 and 2 are close to done and the
+headings below still read as if they are not, because each was written when its
+section was empty. What is genuinely open, in the order this file's own rule
+implies:
+
+| | what | why it is next |
+|---|---|---|
+| 1 | RSA key handling (§2 below) | the only key type of six with no coverage at all, and two GUI pages depend on it |
+| 2 | the two never-tested PINs (§3) | provisioned on every single run and exercised once, negatively |
+| 3 | `loadpqc` / `loadkey` accepting paths (§1) | the last section-2 row; a wiring job, the pieces exist |
+| 4 | the remaining pages (§4) | needs a browser and a human for `13-pgp-pqc` |
+| 5 | section 4, the app (§5) | no ancestor anywhere; genuinely last |
+
+**When a file lands, update its section's `last run` in [PLAN.md](PLAN.md)'s
+counts table.** The emulated and hardware columns carry separate dates because
+they drift apart, and a count with no date reads as current when it is not. Both
+were single sweeps as of 2026-08-05; section 3 is the one most exposed to drift,
+since its browser tier depends on nw.js and the onlykey.github.io checkout rather
+than on anything this repo pins.
 
 Trap that does NOT apply here, worth knowing because the old kit's notes are
 full of it: slot collisions between files. `onlykey-alpha-testing` lost whole
@@ -30,17 +45,17 @@ inherit the workaround.
 
 ---
 
-## 1. Section 2 - the `onlykey-cli` endpoint sweep
+## 1. Section 2 - the `onlykey-cli` endpoint sweep (DONE bar one row)
 
 **The carried-over rows are done.** Every row of PLAN's table that belongs to
 this section now has a replacement, and per the maintainer there are no further
 tests to PORT here. What section 2 is for from now on is the thing it is named
-after: **the Python CLI, endpoint by endpoint**. `onlykey-cli` exposes 36
-subcommands and that list is the checklist - the sweep below is the section's
-body, not a leftover.
+after: **the Python CLI, endpoint by endpoint**. `onlykey-cli` exposes 37
+subcommands, and **all 37 are now driven** - the sweep is finished. One row is
+left in this section and it is at the bottom.
 
-The four ticked rows are kept because each one carries what it cost to
-establish, and that is the part a future reader needs.
+The ticked rows are kept because each carries what it cost to establish, which
+is the part a future reader needs.
 
 - [x] **`11-derived-xwing-cli`** (TC-16/17) → `02-cli/07-derived-xwing`, 7 tests
       in 9s. No button press and no `derivedkeymode` setup: the raw-HID branch
@@ -100,6 +115,13 @@ Five files, split by what an endpoint COSTS rather than by help-text order.
 and exit 0 when they dislike their arguments, so what the command did has to be
 visible from a second place - the kit's own vendor interface reading back what
 the CLI wrote, or the device's console saying what it received.
+
+**A COMMAND THAT BLOCKS ON STDIN TRIPS THE WATCHDOG, NOT ITS OWN TIMEOUT.** The
+run's inactivity budget is 30s and a blocked CLI produces no device output, so a
+per-command `timeoutMs` above that aborts the whole run with a watchdog message
+instead of failing the test that caused it. Section 2's commands are capped at
+12s and fed stdin, so an unanticipated prompt surfaces as a wrong answer rather
+than a hang. Found by a 45s timeout on `credential` killing a run at 31s.
 
 **`--isolate` AND `--reverse` ARE BOTH GATES FOR EVERY NEW FILE.** A file does
 not land until `okt run <file> --isolate` and `okt run <file> --reverse` are
@@ -285,10 +307,16 @@ experimentally, and the gate is mechanical instead - see its row below.
 
 The slot-field count was checked and is corrected below.
 
-## 2. Section 1 - the protocol surface nothing has ever touched
+## 2. Section 1 - the protocol surface, now mostly touched
 
-Highest leverage in the kit: section 1 is the only device section CI can run, so
-every test that lands here runs on every push once stage 2 is enabled.
+Highest leverage in the kit, and not for the reason this heading used to give.
+It said "the only device section CI can run, so every test that lands here runs
+on every push once stage 2 is enabled" - hosted CI is parked (see Not tests), so
+that is not true today. The reason that survives is better: **section 1 is the
+only place a test is worth double.** Section 2 can never run against a physical
+key (`client-access`) and section 3's headless tier drives the emulator by
+design, so section 1 is the hardware-capable surface - everything here was run
+against a real key on 2026-08-05.
 
 Plane 1, the vendor interface - 9 of 18 messages covered, plus two with a single
 branch each:
@@ -334,7 +362,12 @@ branch each:
       `OKWEBAUTHN` are internal tags (`packet_buffer_details[0] = OKWEBAUTHN`),
       never received. Three planned tests that dissolve on inspection; see
       PLAN's plane 1 for the check.
-- [ ] **`OKSETPRIV` / `OKWIPEPRIV`** beyond the backup-passphrase slot.
+- [x] **`OKSETPRIV` / `OKWIPEPRIV`** beyond the backup-passphrase slot - done
+      without ever being a row of its own. `14-stored-keys` sends OKSETPRIV into
+      an ECC slot for all six key types, `13-large-response` sends it into an RSA
+      slot as a 160-byte composite blob over three chunks, and `12-cli-slots`
+      drives both through `setkey`/`wipekey`. What is NOT covered is an actual
+      RSA key, which is the row below.
 - [x] **Slot fields** - counted properly, and mostly done. `set_slot()` has **29**
       cases: **16 per-slot** fields and **13 device-wide settings** that merely
       arrive through the same message. "28" was python's `MessageField` enum
@@ -423,11 +456,21 @@ And the two carried-over rows that came over only partly:
 - [ ] **HMAC settings** - the half of old `08-backup-hmac` that
       `01-protocol/10-backup-restore` did not take. The backup half is more than
       carried over; this half is not covered at all.
-- [ ] **Classic ECC and RSA key handling** - the half of old
-      `12-non-pqc-regression` that `08-slot-keyboard` did not take. Labels and
-      slot storage are covered; the key handling is not. This is also the
-      prerequisite for the encrypt/decrypt pages below, which need a classic RSA
-      key in RSA slots 1 and 2.
+- [ ] **RSA key handling** - the half of old `12-non-pqc-regression` still open,
+      and now the single largest gap in plane 1. **The classic ECC half is
+      done**: `01-protocol/14-stored-keys` drives OKGETPUBKEY, OKSIGN and
+      OKDECRYPT against ed25519, nist256p1, secp256k1 and curve25519 in a stored
+      slot, each verified against node:crypto. RSA is the one key type of the six
+      with no coverage at all - `okcrypto_rsasign()` and `okcrypto_rsadecrypt()`
+      have never had a byte sent at them.
+
+      Two things make this the next row rather than a later one. It is the
+      prerequisite for `18-gui-encrypt-decrypt` below, whose Sign/Decrypt modes
+      need a classic RSA key in **RSA slot 1 (decrypt) and slot 2 (sign)**,
+      hardcoded in `onlykey-pgp.js`'s `slotid()`. And the send path is already
+      solved: python-onlykey's `setkey()` shows RSA-2048 going in as FIVE
+      OKSETPRIV chunks of 114 hex characters each, RSA-4096 as nine - the same
+      framing `13-large-response` uses for the composite blob.
 
 ## 3. The PINs provisioned every run and never tested
 
@@ -481,6 +524,28 @@ Two things that are not optional for any of them, both already measured:
       one part with no ancestor, which is why it is last.
 
 ---
+
+## The state the physical key was left in
+
+Recorded because it is nowhere else and the next hardware run inherits it. On
+2026-08-05 sections 0 and 1 ran against the key (`libraries@83353cf`), and three
+things persist - there is no fixture restore on hardware:
+
+- **ECC1 (slot 101)** holds the X-Wing key `14-stored-keys` generated last.
+- **RSA1** holds `13-large-response`'s random 160-byte composite PQC blob. It is
+  not a real key; it is seeds, and it will sign and decrypt happily.
+- **`stored_key_challenge_mode` = 1**, which is the one that changes the key's
+  security posture: every stored-key crypto operation now takes ONE press of any
+  button instead of a three-digit challenge. `14-stored-keys` sets it and does
+  not restore it.
+
+Undoing the last one means entering config mode and writing slot field 22 back
+to `0` **as the byte, not the character** - see README, "Challenge modes". The
+first two are overwritten by whatever runs next.
+
+Not left behind: no FIDO2 client PIN. `18-clientpin-credmgmt` sets one, but it
+requires `fido-reset`, which is false on hardware unless somebody opts in - so
+that file skipped and never touched the key.
 
 ## Order debt, the other direction
 
@@ -592,6 +657,13 @@ Tracked here so they do not get lost, but they are not coverage.
 
       **What is still unverified** is everything GitHub-specific: the runner
       image, the sysctl, the sparse checkout resolving, the artifact upload.
+
+      **And note it cannot be dispatched from this workstation**, which is a
+      practical fact rather than part of the decision: there is no `gh` binary,
+      no `GH_TOKEN`/`GITHUB_TOKEN`, and no git credential helper. Dispatching
+      means the Actions tab, or installing `gh` first. That is why the four
+      defects were found by simulating the steps locally against a clean tree
+      rather than by watching a run fail.
 
       Whatever replaces this must keep the two assertions the file already
       makes, since both fail in ways that do not look like themselves: the mmap
