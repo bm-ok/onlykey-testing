@@ -11,8 +11,8 @@ Counts are as of 2026-08-05, both adapters green, hardware on `libraries@83353cf
 | sanity | 37 passed, 0 failed | 37 passed, 0 failed |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed, 9 skipped |
 | section 2 | 23 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
-| section 3 | 63 passed, 0 failed (headless 50 + browser 13) | n/a - both tiers drive the emulator by design |
-| **whole tree** | **191 passed** | **96 passed, 9 skipped-with-reason** |
+| section 3 | 72 passed, 0 failed (headless 50 + browser 22) | n/a - both tiers drive the emulator by design |
+| **whole tree** | **200 passed** | **96 passed, 9 skipped-with-reason** |
 
 The key is flashed with `libraries@83353cf` and sections 0 and 1 pass on it.
 Section 2 cannot run against a physical key at all (`client-access`), and
@@ -148,12 +148,12 @@ the second fails the page is at fault rather than the device.
 | `connect` | all of them | - | - | ✅ `00-fido2-lib` | - |
 | X-Wing maths (`age_pqc.js`) | age-derive | - | `15` | ✅ `01-age-pqc-parity` | ☐ |
 | `derive_public_key` / `derive_shared_secret` | password-generator, vault | - | `14` | ✅ `02-derive` | ✅ `11-password-generator` |
-| `derive_xwing_recipient` / `derive_xwing_decap` | age-derive | - | `15` | ✅ `03-xwing-derive` | ☐ |
+| `derive_xwing_recipient` / `derive_xwing_decap` | age-derive | - | `15` | ✅ `03-xwing-derive` | ✅ `12-age-derive` |
 | composite key generation | pgp-pqc | `17-nodejs` | - | ✅ `06-composite-key` | - |
 | `composite_sign` / `composite_decrypt` | pgp-pqc | `17-nodejs` | `17-nwjs` | **section 2** | ☐ |
 | key selection (`onlykey-pgp.js`) | encrypt, decrypt | - | - | ✅ `07-pgp-keys` | - |
 | `startEncryption` / `startDecryption` | encrypt, decrypt | `18`'s `pgp_env` half | `18` | **section 2** | ☐ |
-| age file format (`age_file.js`) | age-derive | - | - | ✅ `04-age-file` | - |
+| age file format (`age_file.js`) | age-derive | - | - | ✅ `04-age-file` | ✅ via `12-age-derive` |
 | vendored openpgp fork (`openpgp_loader.js`) | pgp-pqc | `17-nodejs`'s `openpgp_node` | - | ✅ used by `06` | - |
 | composite blobs (`composite_pgp.js`) | pgp-pqc | `17-nodejs` | - | ✅ `05-composite-blob` | - |
 | vault | vault | - | - | ☐ | ☐ |
@@ -218,8 +218,8 @@ a section that does not exist yet.
 | ☐ | `06-lib-agent-ssh` — SSH derived-key export (TC-13) | cli | — | lib-agent finds the device through hidapi → **stage 3** |
 | ☐ | `07-lib-agent-gpg` — GPG derived identity (TC-13) | cli | — | **stage 3** |
 | ☐ | `11-derived-xwing-cli` — CLI derived X-Wing (TC-16/17) | cli | — | **stage 3** |
-| ☐ | `14-gui-password-generator` | gui | — | drives `localhost:3000/app/password-generator`; needs a display |
-| ☐ | `15-gui-age-derive` (TC-18/19) | gui | — | **stage 6** |
+| ✅ | `14-gui-password-generator` | gui | `03-gui/11-password-generator` | the page's secret cross-checked against the kit's own derivation - two clients, two transports, one device |
+| ✅ | `15-gui-age-derive` (TC-18/19) | gui | `03-gui/12-age-derive` | encrypt and decrypt in the browser, and the file it sealed opened by the kit |
 | ☐ | `17-nwjs-composite-pgp` (TC-11) | gui | — | **stage 6** |
 | ☐ | `18-gui-encrypt-decrypt` | gui | — | drives `localhost:3000/app/encrypt` |
 
@@ -250,7 +250,7 @@ What that leaves is lopsided, and worth knowing before picking anything up:
 | sanity | 0 | done |
 | protocol | 1 (partial) | nothing - `10`'s transport is done; the derive command is not |
 | cli | 4 | nothing - the section runs; these are now just tests to write |
-| gui | 4 | stage 6, and a display |
+| gui | 2 | a display, which now exists |
 
 So "get all the tests over" is mostly a CLI problem, not a protocol one. Stage 3
 is done and the section runs; the four rows left there are tests to write rather
@@ -573,8 +573,12 @@ slot fields are worse — two of twenty-eight.
       and it cross-checks the page's answer against the same derivation done by
       this kit over the in-process bus. Two clients, two transports, one device,
       one secret
-- [ ] The rest of the pages (`03-gui/12..18`): age-derive, encrypt, decrypt,
-      pgp-pqc, vault. Every feature they call is already proven at the library
+- [x] `12-age-derive`: the whole derived X-Wing feature in one page - label to
+      identity, seal, and open again - plus the assertion that makes it worth
+      having: **an age file sealed by the browser is opened by this kit**, with
+      its own maths and its own transport. Self-consistency would have proved
+      nothing; interoperability is the thing that breaks quietly
+- [ ] The rest of the pages (`03-gui/13..18`): encrypt, decrypt, pgp-pqc, vault. Every feature they call is already proven at the library
       level, so a failure there now means the PAGE - which is the whole reason
       the tiers are split
 - [ ] **`localhost`, never `127.0.0.1`.** WebAuthn refuses an IP address as an
