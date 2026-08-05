@@ -29,17 +29,13 @@ inherit the workaround.
 All unblocked; the section runs. These are the last four rows of the
 carried-over table that have no replacement yet.
 
-- [ ] **`11-derived-xwing-cli`** (TC-16/17) - `age-plugin-onlykey --derived
-      --label <name>`, no slot: the key is reproduced from (device master
-      secret, label, RPID `onlyagent.app`) rather than stored. The CLI-side twin
-      of `01-protocol/12-webauthn-tunnel` + `03-gui/03-xwing-derive`: same
-      firmware maths, different transport (raw HID `OKGETPUBKEY`/`OKDECRYPT`
-      with `RESERVED_KEY_WEB_DERIVATION`, vs the CTAP2 vendor bridge).
-      **Needs no button press at all** - the derive branch has no `CRYPTO_AUTH`
-      gate and prints no challenge digits, unlike the slot-based operations - so
-      none of `lib/pqc.js` is involved. Also exercises the multi-packet
-      `process_packets()` path (tag 32 + ct_X 32 = 64 B over one 57-byte
-      report), which is where the alpha kit's bounds-check bug was found.
+- [x] **`11-derived-xwing-cli`** (TC-16/17) → `02-cli/07-derived-xwing`, 7 tests
+      in 9s. No button press and no `derivedkeymode` setup: the raw-HID branch
+      has no `CRYPTO_AUTH` gate and bit 3 is checked only on the tunnelled path
+      in `fido2/ok_extension.cpp`. Both facts are asserted rather than assumed -
+      the tests count the device's own priming marker and require it not to
+      move, so a firmware change that started demanding a confirmation reads as
+      a sentence instead of a timeout.
 - [ ] **`06-lib-agent-ssh`** (TC-13) - `onlykey-agent <identity>` with no
       command, no `--daemonize`, no `--connect` and no `--shell` prints the
       device's SSH public key and exits 0. No SSH server, no shell, no device
