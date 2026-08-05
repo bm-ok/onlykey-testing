@@ -10,9 +10,9 @@ Counts are as of 2026-08-05, both adapters green, hardware on `libraries@83353cf
 |---|---|---|
 | sanity | 50 passed, 0 failed | 50 passed, 0 failed |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed, 9 skipped |
-| section 2 | 31 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
+| section 2 | 34 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
 | section 3 | 72 passed, 0 failed (headless 50 + browser 22) | n/a - both tiers drive the emulator by design |
-| **whole tree** | **221 passed** | **96 passed, 9 skipped-with-reason** |
+| **whole tree** | **224 passed** | **96 passed, 9 skipped-with-reason** |
 
 The key is flashed with `libraries@83353cf` and sections 0 and 1 pass on it.
 Section 2 cannot run against a physical key at all (`client-access`), and
@@ -151,7 +151,7 @@ the second fails the page is at fault rather than the device.
 | `derive_xwing_recipient` / `derive_xwing_decap` | age-derive | - | `15` | ✅ `03-xwing-derive` | ✅ `12-age-derive` |
 | composite key generation | pgp-pqc | `17-nodejs` | - | ✅ `06-composite-key` | - |
 | loading a composite key | pgp-pqc | `17-nodejs` | - | ✅ `02-cli/05-composite-load` | - |
-| `composite_sign` / `composite_decrypt` | pgp-pqc | `17-nodejs` | `17-nwjs` | ✅ `02-cli/06-composite-ops` | ☐ |
+| `composite_sign` / `composite_decrypt` | pgp-pqc | `17-nodejs` | `17-nwjs` | ✅ `02-cli/06-composite-ops` - both halves of both operations, and TC-11's whole round trip | ☐ |
 | key selection (`onlykey-pgp.js`) | encrypt, decrypt | - | - | ✅ `07-pgp-keys` | - |
 | `startEncryption` / `startDecryption` | encrypt, decrypt | `18`'s `pgp_env` half | `18` | **section 2** | ☐ |
 | age file format (`age_file.js`) | age-derive | - | - | ✅ `04-age-file` | ✅ via `12-age-derive` |
@@ -590,9 +590,33 @@ slot fields are worse — two of twenty-eight.
       nothing; interoperability is the thing that breaks quietly
 - [ ] **`pgp-pqc`, attempted and backed out** - the page's own workflow works and
       the last step does not. What was established, so the next attempt starts
-      here rather than rediscovering it (working copy kept out of the tree at
-      `scratchpad/wip/13-pgp-pqc.test.js` plus a diff for `lib/pqc.js`):
+      here rather than rediscovering it. The working copy is `wip/`, which the
+      runner does not glob, so it is kept without being run - it was previously
+      left in a session temp directory and came within a cleanup of being lost.
+      The `lib/pqc.js` diff that sat beside it is deliberately NOT kept:
+      `f2d78da` landed a better version of it, whose AbortController replaces a
+      `done` flag that left waits outstanding in `device.pending`:
 
+      - **Everything below the page is now proven, which is the whole change
+        since the attempt.** `02-cli/06-composite-ops` runs TC-11 end to end
+        with no browser: the 1088-byte ML-KEM half (five chunked sends), one
+        `openpgp.decrypt()` driving BOTH hooks and both challenges, and one
+        `openpgp.sign()` driving both signature halves with the result verified
+        against the published public key. That last one is the maintainer's own
+        acceptance criterion for TC-11, and it is the only assertion here that
+        needs no trust in this kit's arithmetic - a shared secret is checked by
+        recomputing it, a signature by the public key a correspondent would use.
+      - It also covers the opposite firmware path from decryption. Decrypt is a
+        large REQUEST (1088 in, 32 out); sign is a large RESPONSE (32-byte
+        digest in, a 3309-byte ML-DSA-65 signature back), which is where the
+        alpha kit's hardest bug lived: `store_FIDO_response()` dropped anything
+        that did not fit and the device then blamed the challenge PIN. This
+        firmware carries the fix (`LARGE_RESP_BUFFER_SIZE` 3328, and both
+        `device.cpp` bugs commented at the fix site).
+      - So the page is now the ONLY untested layer, which it was not before.
+        When it was backed out, the two-challenge decrypt had never been run
+        anywhere - not headless, not in section 2 - so the browser was never
+        actually established as the variable. It is now.
       - The workflow itself is right and 10 of 12 tests passed: the PAGE
         generates a composite key, displays the blob and tells you to run
         `onlykey-cli setpqc <slot> <hex>`, the kit runs exactly that, and the
@@ -618,13 +642,27 @@ slot fields are worse — two of twenty-eight.
         and keeps predicted digits for the signature, so both mechanisms stay
         live: predicting proves this kit derives what the firmware derives,
         reading is what a page needs.
-      - So the helper is no longer the suspect. What remains unexplained is the
-        PAGE: its console shows PENDING, PENDING, SUCCESS - one operation
-        completing - and then nothing further, with `#pgp_plaintext_out` never
-        filling. The next thing to find out is whether openpgp's second hook is
-        ever invoked, which means instrumenting the page rather than the kit.
+      - So the helper is no longer the suspect, and neither is anything under
+        it. What remains unexplained is the PAGE: its console shows PENDING,
+        PENDING, SUCCESS - one operation completing - and then nothing further,
+        with `#pgp_plaintext_out` never filling. The next thing to find out is
+        whether openpgp's second hook is ever invoked, which means instrumenting
+        the page rather than the kit.
+      - **The instrumentation seam already exists and needs no change to the web
+        app.** `pgp-pqc.js` sets `window.__pgpPqcTestHooks` = `{ openpgp,
+        compositePgp, hardwareKeyForCurrentSlot, ok }` - the LIVE transport
+        included. Wrapping `ok.composite_decrypt` over CDP records every device
+        call, and the two halves are distinguishable by argument size alone: 32
+        bytes is `hooks.ecdh`, 1088 is `hooks.mlkemDecaps`. That answers the
+        question above in one run. (Its comment still names
+        `onlykey-testing/test/17-gui-composite-pgp.js`, a path in the ALPHA kit -
+        the hooks were built for a test that was never finished.)
       - The page reports its errors in `#pgp_decrypt_status` etc., so a failure
         message should read those as well as the console.
+      - Its decrypt handler's comment says the challenge is confirmed "once".
+        `registerCompositeHooks` wires two hooks and the fork awaits both, so the
+        comment is wrong - worth noting only because a stale comment there hints
+        the two-challenge path was never run by hand either.
 
 - [ ] The pages that are left: encrypt, decrypt, pgp-pqc. `vault` and `chat` are
       placeholders and are not on the list. Every feature these three call is
