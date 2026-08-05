@@ -64,19 +64,50 @@ establish, and that is the part a future reader needs.
       `04-age-file` already proves the web app writes a correct container; this
       is the other direction.
 
-**The sweep, which is now the section's main work:**
+**The sweep, which is now the section's main work.**
 
-- [ ] **Every `onlykey-cli` subcommand.** 36 of them, and that list is the
-      checklist. Driven by visible start/stop test files at the section
-      boundary, never by hooks - and, as everywhere else here, an endpoint is
-      not covered by exiting 0. What it did has to be visible from a second
-      place: the kit's own vendor interface reading back what the CLI wrote, or
-      the device's own console saying what it received.
+`onlykey-cli` exposes **37** subcommands. Before this, section 2 had run exactly
+ONE of them - `setpqc`, and only as a way of loading a key for something else to
+test. Everything else in the section drives `age-plugin-onlykey`, `onlykey-agent`,
+`onlykey-gpg` or python-onlykey's library directly, so the CLI itself - the thing
+a person actually types - was almost entirely untested.
 
-      Worth enumerating the subcommands and grouping them before writing
-      anything, because they are not one kind of thing - some are pure reads,
-      some write slot data, some need config mode, and at least one
-      (self-destruct) is a capability question rather than a test.
+Five files, split by what an endpoint COSTS rather than by help-text order.
+**An endpoint is not covered by exiting 0**: several of these print a help line
+and exit 0 when they dislike their arguments, so what the command did has to be
+visible from a second place - the kit's own vendor interface reading back what
+the CLI wrote, or the device's console saying what it received.
+
+- [x] **`10-cli-reads`** - `version` `fwversion` `getlabels` `getkeylabels`
+      `ping` `rng`. 7 tests in 10s, first run green. The version is checked
+      against what section 1's own unlock reported, the labels against a slot
+      this kit wrote over the vendor interface, the RNG against a second call.
+      Two findings worth carrying forward: **the CLI is not one program** -
+      `ping` and `rng` hand off to `solo.cli.key()` and reach the device over
+      FIDO, so they fail in a different language than the rest - and
+      `getlabels` picks its slot layout with `okversion[19] == 'c'`, a fixed
+      INDEX into the model string, which lands on the hardware-variant
+      character only for a version string of exactly this length.
+- [ ] **`11-cli-settings`** - the mode family: `2ndprofilemode` `backupkeymode`
+      `derivedkeymode` `hmackeymode` `storedkeymode` `idletimeout` `keylayout`
+      `keytypespeed` `ledbrightness` `lockbutton` `sysadminmode` `touchsense`
+      `wipemode` `backuppassphrase`. Fourteen, all `OKSETSLOT`-shaped writes to
+      settings rather than key material, and every one readable back. Note
+      `derivedkeymode` is ALREADY written by `03-gui/02-derive`, over the kit's
+      own vendor interface - so the CLI and the kit writing the same field is a
+      cross-check that is already half built.
+- [ ] **`12-cli-slots`** - `setslot` `wipeslot` `setkey` `wipekey` `loadkey`
+      `genkey` `loadpqc` `setpqc`. This is the same work as section 1's "slot
+      fields beyond LABEL and PASSWORD" row below, approached from the other
+      side; do them together or the second one duplicates the first.
+- [ ] **`13-cli-lifecycle`** - `init` `set-pin` `change-pin` `settime` `reset`
+      `restore` `wink`. These change what the device IS. `reset` factory-resets
+      and needs the same capability gate as self-destruct; `init` and the PIN
+      commands read from stdin with `prompt_toolkit`, which is a different
+      driving problem from everything above.
+- [ ] **`14-cli-fido`** - `credential` `loadfirmware`. The second interface, and
+      `loadfirmware` is the one endpoint that can leave a physical key needing
+      `okt flash` - emulated-only, like `OKFWUPDATE`.
 
 ## 2. Section 1 - the protocol surface nothing has ever touched
 
