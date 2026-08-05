@@ -144,10 +144,35 @@ opportunistically** - the sweep is worth more than a clean isolation record. See
       erroring. **--isolate does not catch that class**: those tests pass alone,
       they are broken by a predecessor rather than dependent on one. Establishing
       the state you assert about is the rule that covers both directions.
-- [ ] **`12-cli-slots`** - `setslot` `wipeslot` `setkey` `wipekey` `loadkey`
-      `genkey` `loadpqc` `setpqc`. This is the same work as section 1's "slot
-      fields beyond LABEL and PASSWORD" row below, approached from the other
-      side; do them together or the second one duplicates the first.
+- [x] **`12-cli-slots`** - 8 endpoints, 8 tests in 89s, `--isolate` 8/8. Also
+      closes most of section 1's "slot fields beyond LABEL and PASSWORD" row
+      below: 13 of the CLI's 17 `setslot` field types are now written and each
+      acknowledged in its own words. The remaining four - `password`, `gkey`,
+      `totpkey` - read stdin with prompt_toolkit and moved to `13-cli-lifecycle`.
+
+      Entirely on the vendor surface, console needed for nothing. The strongest
+      assertion stores RFC 8032's published seed with `setkey` and reads the
+      PUBLIC key back with OKGETPUBKEY, checking it against node:crypto - an
+      acknowledgement says a write was accepted, this says the right bytes
+      arrived.
+
+      **`setpqc` reports success for a load the device refused** - three
+      "Error not in config mode" replies, and the CLI prints "Loaded composite
+      PQC PGP key (160 bytes) into RSA1" and exits 0 without reading them. A
+      client fault, not a firmware one; the load path itself is fine, as
+      05-composite-load shows from inside config mode.
+
+      Two more surprises, both pinned as they ship: **OKWIPEPRIV says "Error
+      device locked" on an unlocked device** that is merely not in config mode,
+      where its neighbour OKSETPRIV says "Error not in config mode"; and
+      **OKGETPUBKEY is REFUSED in config mode**, printing to the console with no
+      vendor reply at all, so a client that writes a key and reads it back in one
+      session sees the read time out with nothing to explain it.
+- [ ] **`loadpqc` / `loadkey` accepting paths.** `12-cli-slots` drives only
+      their rejecting path - the file-parse half needs a composite PGP key file
+      and an OpenPGP private key respectively, which that file would have to
+      generate. `03-gui/06-composite-key` already generates the first through the
+      web app's own library, so the pieces exist; it is a wiring job.
 - [ ] **`13-cli-lifecycle`** - `init` `set-pin` `change-pin` `settime` `reset`
       `restore` `wink`. These change what the device IS. `reset` factory-resets
       and needs the same capability gate as self-destruct; `init` and the PIN
