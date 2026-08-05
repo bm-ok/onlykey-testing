@@ -649,17 +649,28 @@ slot fields are worse — two of twenty-eight.
 
 ## Loose ends
 
-- [ ] **A boot that segfaults before saying anything should be retried.** Seen
-      once, at generation 0, raising the gadget for `02-cli/00-venv`: exit 2,
-      `no device output at all`, and the same file passed immediately on a
-      re-run. EXPLAINER already argues this case - a mapping failure at startup
-      is "a retry rather than a device crash, because a run legitimately
-      produces hundreds of restarts and even a small per-boot failure rate
-      becomes a run-killer at that count" - but only a clean mapping ERROR takes
-      that path. This arrived as SIGSEGV instead, so it was classified as a
-      firmware crash and killed the run. A segfault at generation 0 with no
-      output has, by definition, corrupted nothing, so retrying it is safe in
-      exactly the way retrying a later crash would not be.
+- [ ] **A boot that segfaults should be retried, and this is now the single
+      biggest source of noise in the tree.** Twice in roughly eight full runs on
+      2026-08-05, and it is not tied to any test:
+
+      - once at **generation 0**, raising the gadget for `02-cli/00-venv`: exit
+        2, `no device output at all`
+      - once at **generation 1**, on the restart inside `03-gui/02-derive`
+
+      Both times the file passed immediately on a re-run - `02-derive` twice in
+      a row, 6/6 - so nothing about the tests is implicated. It is the boot-time
+      mapping collision EXPLAINER already describes, arriving as SIGSEGV rather
+      than as a clean mapping error.
+
+      That distinction is the whole bug. EXPLAINER argues the case already: a
+      mapping failure at startup is "a retry rather than a device crash, because
+      a run legitimately produces hundreds of restarts and even a small per-boot
+      failure rate becomes a run-killer at that count". Only a clean mapping
+      ERROR takes that path today; a SIGSEGV is classified as a firmware crash
+      and aborts the run. A crash during boot has, by definition, corrupted
+      nothing, so retrying it is safe in exactly the way retrying a later crash
+      would not be - and note it is NOT limited to generation 0, so the retry
+      belongs on every boot rather than only the first.
 
 - [ ] Crypto vectors against derived and stored keys — dropped from the first
       cut because those paths need challenge-mode configuration that has not
