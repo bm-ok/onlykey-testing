@@ -11,8 +11,8 @@ Counts are as of 2026-08-04, both adapters green:
 | sanity | 37 passed, 0 failed | same - it needs no device |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed |
 | section 2 | 23 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
-| section 3 | 39 passed, 0 failed (headless tier) | untried |
-| **whole tree** | **167 passed** | **94 passed, 23 skipped-with-reason** |
+| section 3 | 50 passed, 0 failed (headless tier) | untried |
+| **whole tree** | **178 passed** | **94 passed, 23 skipped-with-reason** |
 
 Hardware counts are from before the PQC work; section 2 cannot run there at all,
 so the only thing waiting on a key is a re-run of sections 0 and 1 against
@@ -148,10 +148,12 @@ the second fails the page is at fault rather than the device.
 | X-Wing maths (`age_pqc.js`) | age-derive | - | `15` | ✅ `01-age-pqc-parity` | ☐ |
 | `derive_public_key` / `derive_shared_secret` | password-generator, vault | - | `14` | ✅ `02-derive` | ☐ |
 | `derive_xwing_recipient` / `derive_xwing_decap` | age-derive | - | `15` | ✅ `03-xwing-derive` | ☐ |
-| `composite_sign` / `composite_decrypt` | pgp-pqc | `17-nodejs` | `17-nwjs` | ☐ | ☐ |
-| `startEncryption` / `startDecryption` (`onlykey-pgp.js`) | encrypt, decrypt | `18`'s `pgp_env` half | `18` | ☐ | ☐ |
+| composite key generation | pgp-pqc | `17-nodejs` | - | ✅ `06-composite-key` | - |
+| `composite_sign` / `composite_decrypt` | pgp-pqc | `17-nodejs` | `17-nwjs` | **section 2** | ☐ |
+| key selection (`onlykey-pgp.js`) | encrypt, decrypt | - | - | ✅ `07-pgp-keys` | - |
+| `startEncryption` / `startDecryption` | encrypt, decrypt | `18`'s `pgp_env` half | `18` | **section 2** | ☐ |
 | age file format (`age_file.js`) | age-derive | - | - | ✅ `04-age-file` | - |
-| vendored openpgp fork (`openpgp_loader.js`) | pgp-pqc | `17-nodejs`'s `openpgp_node` | - | ☐ | - |
+| vendored openpgp fork (`openpgp_loader.js`) | pgp-pqc | `17-nodejs`'s `openpgp_node` | - | ✅ used by `06` | - |
 | composite blobs (`composite_pgp.js`) | pgp-pqc | `17-nodejs` | - | ✅ `05-composite-blob` | - |
 | vault | vault | - | - | ☐ | ☐ |
 | chat | chat | - | - | - | ☐ |
@@ -547,9 +549,15 @@ slot fields are worse — two of twenty-eight.
       shape, the STREAM chunk boundaries, and failures separated by KIND
 - [x] `05-composite-blob`: the 160-byte composite layout, checked against
       `okpqc.h` and `pqc.py` as source files rather than against itself
-- [ ] Still open: the PGP layer (`onlykey-pgp.js`, a page at each end),
-      `composite_sign` / `composite_decrypt`, and the vendored openpgp fork -
-      which `generateCompositeKey()` needs and nothing here loads yet
+- [x] `06-composite-key`: generation through the vendored openpgp fork, and the
+      blob checked against the PUBLIC key beside it rather than against itself
+- [x] `07-pgp-keys`: the PGP layer's key selection - primary signs, subkey
+      encrypts, and which key a message names
+- [x] **The headless tier is complete.** Everything in the library that can be
+      reached without a kernel HID node is now covered; what is left needs a
+      composite key loaded by `onlykey-cli setpqc`, and `OKSETPRIV` is not
+      reachable over the browser's WebAuthn transport at all, so it is section
+      2's by construction rather than by omission
 - [ ] **In section 2, not here:** read a file written by the real `age` binary
       with `age_file.js`. That needs the plugin, and decrypting one needs a
       device, so it belongs beside `03-pqc-decrypt`
