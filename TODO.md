@@ -534,21 +534,44 @@ And the two carried-over rows that came over only partly:
       into P and Q, multiplies them and publishes the result - so the slot goes
       on reporting a 2048-bit key that is not a key. Measured: `6cd48841…`
       where the real modulus had been.
-- [ ] **DECIDE: is the RSA slot tail worth a test?** Found by reading, **not
-      verified experimentally**, and it is the one thing here that wants the
-      maintainer's judgement. `rsa_priv_flash()` encrypts only `keysize` bytes
-      but then copies all `MAX_RSA_KEY_SIZE` (512) bytes of the
-      `rsa_private_key` global into the flash sector - and that global is where
-      `okcore_flashget_RSA()` decrypts keys **in place**. So storing a smaller
-      key (a 1024-bit one, 128 bytes) after any larger key has been READ writes
-      the previous key's **plaintext** P‖Q into flash past the encrypted region.
+- [x] **The RSA slot tail - SETTLED BY MEASUREMENT, and it holds.** Was a DECIDE
+      row found by reading; now `01-protocol/22-rsa-slot-tail`, 2 tests, gated on
+      `storage-files`. **The write-up to send upstream is
+      [FINDING-rsa-slot-tail.md](FINDING-rsa-slot-tail.md).**
 
-      Same profile key either way, so it is not a cross-user leak - it is
-      unencrypted private key material at rest. Demonstrating it needs a
-      1024-bit key stored after a 2048-bit read, and the only oracle is
-      `flash.bin` rather than any client surface, so it would be an
-      emulated-only file gated on `storage-files`. Deliberately left out of
-      `19-rsa-keys`: the subject is the storage layout, not RSA key handling.
+      **Question 1, is the plaintext there: YES.** 85 contiguous plaintext bytes
+      of a 2048-bit key's P‖Q, at key offset 171 - which is inside Q, so it is
+      the low 85 bytes of the 128-byte prime. Well past the half-the-bits
+      threshold where Coppersmith recovers a factor. It sits 171 bytes into the
+      512-byte slot stride, exactly where the code predicts, and the key being
+      STORED is not in the clear (0 bytes) - so it is a tail-of-buffer defect
+      rather than the slot encryption failing.
+
+      **Question 2, is it reachable through a normal device operation: NO**, and
+      that is what bounds the severity. Every reader is capped at the slot's
+      declared `type * 128`: the 1024-bit slot answers OKGETPUBKEY in 2 reports
+      carrying 0 bytes of the other key, and the tail cannot be promoted into
+      readability because declaring a larger type requires a full-size write that
+      overwrites it first - measured, 85 bytes before, 0 after. The backup path is
+      bounded by the same expression, which is READ from the source rather than
+      measured and is labelled as such in the write-up.
+
+      **Two false negatives before the real answer**, both worth carrying forward
+      because either would have closed this row wrongly:
+
+      1. `pqc.readyForKeygen()` RESTARTS, and a reboot re-runs `setup()` and
+         zeroes the global, so the first run measured nothing at all. Entering
+         config mode by long press does NOT reboot, so the read and the write can
+         share a boot - and the residue living in RAM is what bounds the finding
+         to a single boot.
+      2. **`flash.bin` is word-reversed** - see README. The search found nothing
+         because it was looking for logical byte order. A label-based control now
+         proves the instrument before any absence is believed, which is the only
+         reason this was caught rather than reported as "read wrong".
+
+      Not examined: `ecc_private_key` has the same shape - a global holding a
+      plaintext private key between operations - and nothing here has looked at
+      it. The write-up says so.
 
 ## 3. The PINs provisioned every run and never tested
 

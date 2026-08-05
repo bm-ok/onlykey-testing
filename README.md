@@ -355,6 +355,19 @@ All measured, all load-bearing, all commented at the point that depends on them:
   a stale ready flag - `locked` on the emulator where it is instant,
   `unreachable` on a key where re-enumeration takes real time. Same race, two
   faces. Use `waitForReboot()`.
+- **`flash.bin` is not a flat byte image - every aligned 4-byte word is
+  byte-reversed.** `okcore_flashset_common()` (okcore.cpp:3233) packs four bytes
+  into one longword BIG-endian - `ptr[z]` becomes the most significant byte - and
+  writes it with `flashProgramWord()`. On a little-endian core that lands `ptr[z]`
+  at the highest address of the word. `okcore_flashget_common()` mirrors the
+  unpack, so the device is perfectly self-consistent and **only an out-of-band
+  reader sees it** - which means any test that searches `flash.bin` for a byte
+  sequence must un-reverse each word first, or it finds nothing and reads that as
+  an absence. It is firmware behaviour, not an emulator artifact, so a dump of a
+  real key's flash needs the same treatment. `01-protocol/22-rsa-slot-tail` has
+  the helper and a label-based control that proves the instrument before trusting
+  any absence; measured by writing `oktprobe00961683` and finding it
+  word-reversed at `0x3c820`.
 - **An RSA slot holds P‖Q, and E is hardcoded to 65537.** There is no private
   exponent on the device: `rsa_getpub()` multiplies the halves for N and
   `rsa_sign()`/`rsa_decrypt()` recompute D, DP, DQ and QP every time. A key with
