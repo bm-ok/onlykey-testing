@@ -526,13 +526,37 @@ test something different from what the file is for.
 
 Tracked here so they do not get lost, but they are not coverage.
 
-- [ ] **Stage 2, CI.** The workflow exists, is `workflow_dispatch` only, and is
-      **untested**. Do not enable it without a manual run first. It must assert
-      the mmap rung (`vm.mmap_min_addr=4096`) and the `xwing-math` capability
-      *before* running anything - at the unprivileged default the device boots
-      and answers HID and only segfaults once something encrypts, and a missing
-      optional package would skip a file with a reason and go green, which is
-      exactly how a test stops existing without anyone noticing.
+- [ ] **Stage 2, CI - PARKED DELIBERATELY, not abandoned.** The workflow exists,
+      is `workflow_dispatch` only, and has still never run on GitHub. Do not
+      dispatch it and do not add push/PR triggers for now.
+
+      **Why it is parked:** hosted CI is being re-envisioned once the
+      local/developer-station side settles. A Raspberry Pi bridge could let a
+      SELF-HOSTED runner reach a real device node - which would put sections 2,
+      3 and 4 in reach of automation, and those are permanently impossible on a
+      hosted runner. That is a different workflow with a different shape, not
+      this one plus triggers, so building this one out further would be work
+      thrown away.
+
+      **What is already done and stays done.** Four defects were found by
+      simulating every step against a clean tree and are fixed in the file
+      (`1349aca`): the emulator repo name was wrong; `npm install` cannot work
+      in `emulator/` because `"gypfile": true` runs node-gyp before
+      `scripts/stage.js` generates the `sources.gypi` that `binding.gyp`
+      includes; `npm run build` has no configure step; and the Teensy core -
+      one of the FOUR trees `stage.js` requires - was never checked out at all.
+      With those fixed the addon builds from a clean tree locally.
+
+      **What is still unverified** is everything GitHub-specific: the runner
+      image, the sysctl, the sparse checkout resolving, the artifact upload.
+
+      Whatever replaces this must keep the two assertions the file already
+      makes, since both fail in ways that do not look like themselves: the mmap
+      rung (`vm.mmap_min_addr=4096`) and the `xwing-math` capability, BEFORE
+      running anything. At the unprivileged default the device boots and answers
+      HID and only segfaults once something encrypts; and a missing optional
+      package skips a file with a reason and goes green, which is exactly how a
+      test stops existing without anyone noticing.
 - [ ] **Track `package-lock.json`?** Currently gitignored, with four declared
       optional dependencies - `node-hid` and three `@noble` packages, the last of
       which is cryptographic maths the suite checks itself against.
