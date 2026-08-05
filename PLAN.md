@@ -128,8 +128,9 @@ challenge code"` status event: the same 3-button confirmation `lib/pqc.js` now
 answers in software, once solved with hardware.
 
 `onlykey-3rd-party.js` and `onlykey-api.js` are also where `OKGETPUBKEY`'s
-option bytes are written down - the thing `10-fido2-xwing-derive` is blocked on.
-So that row is a reading job either way, not a reverse-engineering one.
+option bytes are written down - which is what `10-fido2-xwing-derive` was
+blocked on. It turned out to need no reading either: `03-gui/03-xwing-derive`
+runs the library, and the library already sends them.
 
 ### Section 3's build sheet: every feature, twice
 
@@ -504,9 +505,10 @@ and stays in section 1, which is what makes it CI-able.
       through a fabricated `allowList` credential ID returns the device's
       X25519 handshake key and a status string that **matches what the vendor
       interface reports** - two transports, two firmware paths, one answer
-- [ ] The vendor commands that ride it: `OKGETPUBKEY` answered
-      INVALID_COMMAND on a first attempt, so its option bytes need working out
-      from `lib/fido2/client.js`. That is what `10-fido2-xwing-derive` needs
+- [x] The vendor commands that ride it. `OKGETPUBKEY` answered INVALID_COMMAND
+      on a hand-rolled first attempt, and rather than working its option bytes
+      out, `03-gui/03-xwing-derive` lets the shipped library send them. The
+      derive path is covered; the other tunnelled commands are not
 
 ## Stage 5b — the rest of plane 1
 
