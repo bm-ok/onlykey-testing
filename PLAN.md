@@ -11,8 +11,8 @@ Counts are as of 2026-08-04, both adapters green:
 | sanity | 37 passed, 0 failed | same - it needs no device |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed |
 | section 2 | 23 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
-| section 3 | 24 passed, 0 failed (headless tier) | untried |
-| **whole tree** | **152 passed** | **94 passed, 23 skipped-with-reason** |
+| section 3 | 39 passed, 0 failed (headless tier) | untried |
+| **whole tree** | **167 passed** | **94 passed, 23 skipped-with-reason** |
 
 Hardware counts are from before the PQC work; section 2 cannot run there at all,
 so the only thing waiting on a key is a re-run of sections 0 and 1 against
@@ -150,9 +150,9 @@ the second fails the page is at fault rather than the device.
 | `derive_xwing_recipient` / `derive_xwing_decap` | age-derive | - | `15` | ✅ `03-xwing-derive` | ☐ |
 | `composite_sign` / `composite_decrypt` | pgp-pqc | `17-nodejs` | `17-nwjs` | ☐ | ☐ |
 | `startEncryption` / `startDecryption` (`onlykey-pgp.js`) | encrypt, decrypt | `18`'s `pgp_env` half | `18` | ☐ | ☐ |
-| age file format (`age_file.js`) | age-derive | - | - | ☐ | - |
+| age file format (`age_file.js`) | age-derive | - | - | ✅ `04-age-file` | - |
 | vendored openpgp fork (`openpgp_loader.js`) | pgp-pqc | `17-nodejs`'s `openpgp_node` | - | ☐ | - |
-| composite blobs (`composite_pgp.js`) | pgp-pqc | `17-nodejs` | - | ☐ | - |
+| composite blobs (`composite_pgp.js`) | pgp-pqc | `17-nodejs` | - | ✅ `05-composite-blob` | - |
 | vault | vault | - | - | ☐ | ☐ |
 | chat | chat | - | - | - | ☐ |
 
@@ -543,11 +543,16 @@ slot fields are worse — two of twenty-eight.
 - [x] `03-xwing-derive`: the derived X-Wing path end to end against the
       emulated device, finished with BOTH this kit's maths and the web app's.
       This is what `10-fido2-xwing-derive` was blocked on
-- [ ] The rest of the build sheet above. Still open, in rough order of size:
-      the PGP layer (`onlykey-pgp.js`, a page at each end), composite PGP-PQC
-      (`composite_sign`/`composite_decrypt` plus `composite_pgp.js`'s blob
-      packing), `age_file.js` (pure JS, checkable against the real `age`
-      binary), and the vendored openpgp fork
+- [x] `04-age-file`: the age v1 container the web app writes itself - header
+      shape, the STREAM chunk boundaries, and failures separated by KIND
+- [x] `05-composite-blob`: the 160-byte composite layout, checked against
+      `okpqc.h` and `pqc.py` as source files rather than against itself
+- [ ] Still open: the PGP layer (`onlykey-pgp.js`, a page at each end),
+      `composite_sign` / `composite_decrypt`, and the vendored openpgp fork -
+      which `generateCompositeKey()` needs and nothing here loads yet
+- [ ] **In section 2, not here:** read a file written by the real `age` binary
+      with `age_file.js`. That needs the plugin, and decrypting one needs a
+      device, so it belongs beside `03-pqc-decrypt`
 - [ ] Section 3's browser tier (`03-gui/10+`), the web app in nw.js
 - [ ] Section 4, the OnlyKey app — never driven from a harness at all
 - [ ] Services started and stopped by *visible* test files at the section
