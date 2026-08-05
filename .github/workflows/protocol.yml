@@ -10,9 +10,26 @@
 # has passed once by hand would put a red X on every commit for reasons that
 # have nothing to do with the commits.
 #
-# Expect the first few runs to fail on the checkout step or the addon build.
-# The device work itself is the part most likely to be fine, because it is what
-# has been exercised locally.
+# It has still never run ON GITHUB. What has happened is that every step was
+# simulated locally against a clean tree - no .stage, no sources.gypi, no
+# build/, no node_modules - and four defects were found and fixed that way:
+#
+#   1. EMULATOR_REPO pointed at bm-ok/node-onlykey-emulator, which does not
+#      exist. The emulator is bmatusiak/node-onlykey-emulator.
+#   2. `npm install` in emulator/ cannot work: package.json sets
+#      "gypfile": true, so npm runs node-gyp itself before scripts/stage.js has
+#      generated sources.gypi, which binding.gyp includes on its first line.
+#      Reproduced from a clean tree; it dies in gyp configure.
+#   3. `npm run build` has no configure step, so it wants a Makefile a fresh
+#      tree does not have. `npm run rebuild` is stage, configure, build.
+#   4. The Teensy core was never checked out at all. stage.js needs FOUR trees
+#      and this workflow provided three, so it would have stopped at
+#      `stage: missing required tree`.
+#
+# With 1-4 fixed the addon builds from a clean tree locally. What is still
+# unverified is everything GitHub-specific: the runner image, the sysctl, the
+# sparse checkout, the artifact upload. So the triggers stay off until this has
+# gone green by hand at least once.
 # ==================================================================
 #
 # What can run here, and why nothing else can: a hosted runner has no USB, no
@@ -34,9 +51,10 @@ on:
 # Repositories, all from the same owner as this kit. The emulator is the parent
 # checkout; the firmware and libraries are what it compiles.
 env:
-  EMULATOR_REPO: bm-ok/node-onlykey-emulator
+  EMULATOR_REPO: bmatusiak/node-onlykey-emulator
   FIRMWARE_REPO: bm-ok/OnlyKey-Firmware
   LIBRARIES_REPO: bm-ok/0c-coder-libraries
+  TEENSY_REPO: bm-ok/arduino-1.6.5-r5-teensy_127
 
 jobs:
   section-1:
@@ -70,6 +88,27 @@ jobs:
           repository: ${{ env.LIBRARIES_REPO }}
           path: onlykey/libraries
 
+      # FOUR trees, not three. stage.js refuses to run without this one -
+      # `stage: missing required tree` - and it is easy to miss because the
+      # emulator never mentions Teensy anywhere a reader would look: the tree is
+      # the stock Arduino/Teensy 3 core that OnlyKey's own *.c and *.h are copied
+      # OVER. Only two paths inside it are used, so the checkout is narrowed to
+      # them rather than pulling the whole thing, which is large:
+      #
+      #   .../cores/teensy3       staged first, then shadowed by OnlyKey-Firmware
+      #   .../libraries           read by gen-sources.js
+      #
+      # See README, "The firmware sources, and which copy compiles".
+      - name: check out the Teensy core
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.TEENSY_REPO }}
+          path: onlykey/arduino-1.6.5-r5-teensy_127
+          sparse-checkout: |
+            arduino-1.6.5-r5/hardware/teensy/avr/cores/teensy3
+            arduino-1.6.5-r5/hardware/teensy/avr/libraries
+          sparse-checkout-cone-mode: false
+
       - name: put the emulator where the kit expects it
         run: mv emulator-repo/emulator ./emulator
 
@@ -85,11 +124,25 @@ jobs:
       - name: lower vm.mmap_min_addr
         run: sudo sysctl -w vm.mmap_min_addr=4096
 
+      # --ignore-scripts is REQUIRED here, not a preference. package.json has
+      # `"gypfile": true`, so a plain `npm install` makes npm run `node-gyp
+      # rebuild` on its own - and binding.gyp opens with
+      # `"includes": ["sources.gypi"]`, a file that scripts/stage.js has not
+      # generated yet. Both it and .stage/ are gitignored, so a fresh checkout
+      # has neither and the install dies in gyp configure before `npm run build`
+      # is ever reached.
+      #
+      # `rebuild` rather than `build` for the same class of reason: `build` is
+      # `stage && node-gyp build`, with no configure, so it wants a Makefile that
+      # a fresh tree does not have. `rebuild` is stage, configure, build.
+      #
+      # Verified from a clean tree - .stage, sources.gypi, build/ and
+      # node_modules all removed - where `npm install` fails and this succeeds.
       - name: build the emulator addon
         working-directory: emulator
         run: |
-          npm install
-          npm run build
+          npm install --ignore-scripts
+          npm run rebuild
 
       # The kit's own dependencies are all optional, and this is the step that
       # decides whether the X-Wing tests RUN here or skip themselves politely.
