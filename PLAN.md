@@ -588,6 +588,36 @@ slot fields are worse — two of twenty-eight.
       having: **an age file sealed by the browser is opened by this kit**, with
       its own maths and its own transport. Self-consistency would have proved
       nothing; interoperability is the thing that breaks quietly
+- [ ] **`pgp-pqc`, attempted and backed out** - the page's own workflow works and
+      the last step does not. What was established, so the next attempt starts
+      here rather than rediscovering it (working copy kept out of the tree at
+      `scratchpad/wip/13-pgp-pqc.test.js` plus a diff for `lib/pqc.js`):
+
+      - The workflow itself is right and 10 of 12 tests passed: the PAGE
+        generates a composite key, displays the blob and tells you to run
+        `onlykey-cli setpqc <slot> <hex>`, the kit runs exactly that, and the
+        page then encrypts host-side. That seam - a browser that cannot reach
+        OKSETPRIV handing hex to a command line that can - is the feature's real
+        shape and worth testing exactly that way.
+      - **The challenge cannot be predicted here**, unlike everywhere else: an
+        openpgp signature is over subpackets the page assembles. But it does not
+        need to be. `done_process_packets()` prints `Received Message` followed
+        by `byteprint(packet_buffer, packet_buffer_offset)` - the exact bytes it
+        is about to hash - so the digits can be READ. Note `Serial.print(b, HEX)`
+        does not pad, so `0x05` prints as `5` and naive joining shifts every
+        byte after the first small one.
+      - **A composite decryption raises TWO challenges, not one.**
+        `registerCompositeHooks` wires both `hooks.ecdh` and `hooks.mlkemDecaps`,
+        and openpgp needs both halves. Answering only the first leaves the second
+        unanswered and the page reports "Composite operation abandoned by the
+        device" for an operation that was half done - one `CTAP1_SUCCESS` in its
+        console, then an abandonment.
+      - Answering repeatedly was the obvious fix and did NOT work as written:
+        the run ended with three outstanding `Received Message` waits, so the
+        loop is arming waits it never settles. That is where to pick up.
+      - The page reports its errors in `#pgp_decrypt_status` etc., so a failure
+        message should read those as well as the console.
+
 - [ ] The pages that are left: encrypt, decrypt, pgp-pqc. `vault` and `chat` are
       placeholders and are not on the list. Every feature these three call is
       already proven at the library level, so a failure there means the PAGE -
