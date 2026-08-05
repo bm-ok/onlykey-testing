@@ -272,11 +272,13 @@ Checked while correcting that one:
 | CTAP2 implements MakeCredential, GetAssertion, GetInfo, ClientPIN, Reset, GetNextAssertion, Cancel, CredMgmt | verified, all in `fido2/ctap.cpp` |
 | `hmac-secret` and `credProtect` are advertised | verified, in `ctap.cpp` / `ctap_parse.cpp` |
 | the derived branches have no `CRYPTO_AUTH` gate | verified, and asserted by `07-derived-xwing` and `15-age-file-interop` |
-| 28 slot fields under `OKSETSLOT` | **UNVERIFIED** - the CLI reaches 17 of them; where 28 came from is not recorded |
-| `OKFWUPDATE` can leave a key needing `okt flash` | **UNVERIFIED** - never driven past its confirmation prompt, deliberately |
+| 28 slot fields under `OKSETSLOT` | **WRONG twice** - `set_slot()` dispatches **29** cases, and only **16** are per-slot; the other 13 are device-wide settings. 28 is the size of python's `MessageField` enum, which is where the number came from |
+| `OKFWUPDATE` can leave a key needing `okt flash` | **WRONG, and worse than stated** - it locks the bootloader and permanently converts a developer key into a production key. Maintainer's understanding, deliberately NOT verified experimentally |
 
-The two marked UNVERIFIED are left as they are rather than chased now. Neither
-blocks anything; both should be checked before a row is written against them.
+`OKFWUPDATE` is the exception to "check it": it is not to be verified
+experimentally, and the gate is mechanical instead - see its row below.
+
+The slot-field count was checked and is corrected below.
 
 ## 2. Section 1 - the protocol surface nothing has ever touched
 
@@ -318,11 +320,36 @@ branch each:
       never received. Three planned tests that dissolve on inspection; see
       PLAN's plane 1 for the check.
 - [ ] **`OKSETPRIV` / `OKWIPEPRIV`** beyond the backup-passphrase slot.
-- [ ] **Slot fields beyond `LABEL` and `PASSWORD`** - 2 of 28 are written today.
-      TOTP keys, the delay and next-key chaining, wipe mode, key layout, type
-      speed, the challenge modes.
-- [ ] **`OKFWUPDATE` last, and probably emulated-only** - it is the one message
-      that can leave a physical key needing `okt flash`.
+- [x] **Slot fields** - counted properly, and mostly done. `set_slot()` has **29**
+      cases: **16 per-slot** fields and **13 device-wide settings** that merely
+      arrive through the same message. "28" was python's `MessageField` enum
+      size, not a firmware fact.
+
+      All 13 device settings are covered by `02-cli/11-cli-settings`. Of the 16
+      per-slot fields, `02-cli/12-cli-slots` and `13-cli-lifecycle` write 14 -
+      label, username, url, the three delays, the five next-key characters, the
+      2FA type, the TOTP key and the password. Two are left: **case 10**
+      (`YUBIAUTH`, whose EEPROM accessor is named `public_DEPRICATED`) and
+      **case 29**, which has no name in any client's enum.
+
+      Also found: cases 5, 8, 9, 10 and 29 carry cross-guards - "Error MFA
+      already enabled on this slot" and its mirror - but only when
+      `Duo_config[0]==1`, meaning no device PIN is set. On a provisioned key they
+      never fire, which is why a slot can hold both a password and a TOTP key in
+      `13-cli-lifecycle`.
+- [ ] **`OKFWUPDATE` - EMULATED-ONLY, MECHANICALLY GATED, AND NOT DRIVEN PAST
+      ITS INTERLOCKS.** On a physical key this needs the special bootloader, and
+      running it **locks the bootloader and permanently converts a developer key
+      into a production key**. That is not "needs a reflash" - the key is gone as
+      a dev key. Anything that sends this message, or drives a client that could,
+      carries `requires: ['emulated']` so the hardware adapter cannot reach it
+      and says why it skipped. `02-cli/14-cli-fido` already does.
+
+      **What emulation cannot cover, by design rather than by omission:** FSEC
+      lives in an anonymous mapping rebuilt on every boot, so there are no lock
+      bits and the bootloader-lock path is not reachable on the emulator at all.
+      What is testable is the framing, the interlocks and the refusals. Test
+      those. The destructive behaviour stays untested.
 
 Plane 2, CTAP2 proper - the ceremony works; the extensions do not exist:
 

@@ -38,6 +38,23 @@
  * commands are driven only as far as their confirmation prompts, which is the
  * part worth testing anyway: an interlock that can be bypassed is the bug, and
  * an interlock that holds is proven by the device staying silent behind it.
+ *
+ * `loadfirmware` IS `OKFWUPDATE`, AND ON A PHYSICAL KEY IT NEEDS THE SPECIAL
+ * BOOTLOADER. RUNNING IT LOCKS THE BOOTLOADER AND PERMANENTLY CONVERTS A
+ * DEVELOPER KEY INTO A PRODUCTION KEY. That is not "needs a reflash" - the key
+ * is gone as a dev key, and nothing brings it back.
+ *
+ * So this file carries `emulated` in its metadata. That is a MECHANICAL gate,
+ * not a note: the hardware adapter cannot run the file at all, and says why it
+ * skipped. `client-access` already implies the gadget in practice, but "in
+ * practice" is the wrong strength of guarantee for this one.
+ *
+ * WHAT EMULATION CANNOT COVER, stated so that the gap is by design rather than
+ * by omission: FSEC lives in an anonymous mapping rebuilt on every boot, so the
+ * emulator has no lock bits and the bootloader-lock path is not reachable there
+ * at all. What IS testable is the framing, the interlocks and the refusals, and
+ * that is what this file tests. THE DESTRUCTIVE BEHAVIOUR IS UNTESTED, and it
+ * should stay that way.
  */
 'use strict';
 
@@ -69,7 +86,8 @@ const SOLO_PIN_BREAKAGE = /'Fido2Client' object has no attribute 'client_pin'/;
 
 describe('onlykey-cli, the FIDO endpoints', {
   state: 'initialized',
-  requires: ['crypto', 'client-access'],
+  /* `emulated` is the loadfirmware gate - see the header. */
+  requires: ['emulated', 'crypto', 'client-access'],
   timeoutMs: 300000,
 }, () => {
   const needCli = ({ skip }) => {
@@ -270,9 +288,12 @@ describe('onlykey-cli, the FIDO endpoints', {
        * SURFACE: vendor and FIDO - both survive into a production walk, and here
        * the assertion is that NEITHER carries anything.
        *
-       * This is the one endpoint in the whole CLI that can leave a physical key
-       * needing `okt flash`, so it is driven exactly as far as its two guards
-       * and no further. Both are tested because they fail differently: no file
+       * This is the one endpoint in the whole CLI that can DESTROY a physical
+       * key: `OKFWUPDATE` needs the special bootloader, and running it locks
+       * that bootloader and permanently converts a developer key into a
+       * production key. The suite's `emulated` requirement is what stops the
+       * hardware adapter reaching this at all; driving it only as far as its two
+       * guards is the second line, not the first. Both are tested because they fail differently: no file
        * at all is a usage error, and a file with the confirmation declined is
        * the interlock doing its job. The valuable assertion in each case is the
        * silence - a guard that has already sent something is not a guard.

@@ -393,11 +393,14 @@ branches - the ones that read a key out of flash - have never been reached by
 either message**, which is where the six key types live and where a bug would
 sit on real user data rather than on a derivation.
 
-Underneath `OKSETSLOT` sit **28 slot fields** and **6 key types** (ed25519,
-P256, secp256k1, curve25519, ML-KEM-768, X-Wing). The kit writes exactly two
-fields: `LABEL` and `PASSWORD`. Everything else - TOTP keys, the delay and
-next-key chaining, wipe mode, key layout, type speed, the challenge modes - is
-untouched.
+Underneath `OKSETSLOT` sit **29 dispatched cases** and **6 key types** (ed25519,
+P256, secp256k1, curve25519, ML-KEM-768, X-Wing). Not 28 - that was the size of
+python's `MessageField` enum, and the split matters more than the count: **16
+are per-slot fields** and **13 are device-wide settings** that merely arrive
+through the same message. All 13 settings are covered by `11-cli-settings`; 14
+of the 16 slot fields by `12-cli-slots` and `13-cli-lifecycle`. What is left is
+case 10 (`YUBIAUTH`, accessor named `public_DEPRICATED`) and case 29, which has
+no name in any client's enum.
 
 **How a large response actually comes back**, since this was written down wrong
 here for several sessions and put a phantom row first in the work order.
