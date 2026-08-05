@@ -206,15 +206,23 @@ opportunistically** - the sweep is worth more than a clean isolation record. See
       with "Successfully set 2FA Key". Telling them apart needs a TOTP code
       checked against a host computation, which is the deferred challenge-mode
       work in PLAN's loose ends.
-- [ ] **`14-cli-fido`** - `credential` `loadfirmware` `set-pin` `change-pin`
-      `reset` `wink`. Everything that routes through `solo.cli.key()`, which is
-      the CLI's other half: it reaches the device over FIDO rather than the
-      vendor interface, and fails in a different language when it fails.
-      `set-pin` and `change-pin` are the FIDO2 CLIENT PIN, not the device PIN.
-      `reset` is a FIDO2 authenticator reset - destructive to credentials, so it
-      needs a capability gate the way self-destruct does. `loadfirmware` is the
-      one endpoint that can leave a physical key needing `okt flash`, so it is
-      emulated-only, like `OKFWUPDATE`.
+- [x] **`14-cli-fido`** - 6 endpoints, 6 tests in 22s, `--isolate` 6/6.
+      `wink` `credential` `set-pin` `change-pin` `reset` `loadfirmware`.
+
+      **The sweep is complete: 37 of 37 subcommands are now driven.**
+
+      Nothing here flashes firmware and nothing resets the authenticator. Both
+      are driven exactly as far as their confirmation prompts, which is the part
+      worth testing: the assertion is that NEITHER interface carries anything
+      while the guard holds.
+
+      **`credential`, `set-pin` and `change-pin` are broken by a host dependency**
+      - `AttributeError: 'Fido2Client' object has no attribute 'client_pin'`,
+      solo calling an API the installed python-fido2 no longer exposes. The
+      device answers; the client cannot use the answer. `set-pin` then EXITS 0
+      while printing the error, so a script checking exit codes is told a PIN
+      was set when none was. Worth deciding whether to pin the venv's `solo` and
+      `fido2` back into step - see the row under Not tests.
 
 ## 2. Section 1 - the protocol surface nothing has ever touched
 
@@ -376,6 +384,17 @@ Two files are deliberate rather than lazy even within the tally: the lib-agent
 pair and the composite PGP files are built around ONE long operation with
 several assertions about it. Re-running `onlykey-gpg init` per assertion would
 test something different from what the file is for.
+
+## The venv's solo / python-fido2 mismatch
+
+- [ ] **Decide whether to pin them back into step.** `credential`, `set-pin` and
+      `change-pin` all fail inside `solo` with `'Fido2Client' object has no
+      attribute 'client_pin'` - solo calls an API the installed python-fido2 has
+      removed. `wink` works, so the transport and the device are fine; it is
+      purely the PIN-token path. `02-cli/14-cli-fido` asserts the current
+      behaviour, so whichever way this is resolved that file will need its
+      assertions updated - deliberately, since a test whose subject is a known
+      breakage should fail when the breakage is fixed.
 
 ## Not tests
 
