@@ -10,9 +10,9 @@ Counts are as of 2026-08-05, both adapters green, hardware on `libraries@83353cf
 |---|---|---|
 | sanity | 37 passed, 0 failed | 37 passed, 0 failed |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed, 9 skipped |
-| section 2 | 23 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
+| section 2 | 27 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
 | section 3 | 72 passed, 0 failed (headless 50 + browser 22) | n/a - both tiers drive the emulator by design |
-| **whole tree** | **200 passed** | **96 passed, 9 skipped-with-reason** |
+| **whole tree** | **204 passed** | **96 passed, 9 skipped-with-reason** |
 
 The key is flashed with `libraries@83353cf` and sections 0 and 1 pass on it.
 Section 2 cannot run against a physical key at all (`client-access`), and
@@ -150,7 +150,8 @@ the second fails the page is at fault rather than the device.
 | `derive_public_key` / `derive_shared_secret` | password-generator, vault | - | `14` | ✅ `02-derive` | ✅ `11-password-generator` |
 | `derive_xwing_recipient` / `derive_xwing_decap` | age-derive | - | `15` | ✅ `03-xwing-derive` | ✅ `12-age-derive` |
 | composite key generation | pgp-pqc | `17-nodejs` | - | ✅ `06-composite-key` | - |
-| `composite_sign` / `composite_decrypt` | pgp-pqc | `17-nodejs` | `17-nwjs` | **section 2** | ☐ |
+| loading a composite key | pgp-pqc | `17-nodejs` | - | ✅ `02-cli/05-composite-load` | - |
+| `composite_sign` / `composite_decrypt` | pgp-pqc | `17-nodejs` | `17-nwjs` | ☐ (the key now loads) | ☐ |
 | key selection (`onlykey-pgp.js`) | encrypt, decrypt | - | - | ✅ `07-pgp-keys` | - |
 | `startEncryption` / `startDecryption` | encrypt, decrypt | `18`'s `pgp_env` half | `18` | **section 2** | ☐ |
 | age file format (`age_file.js`) | age-derive | - | - | ✅ `04-age-file` | ✅ via `12-age-derive` |
@@ -617,6 +618,18 @@ slot fields are worse — two of twenty-eight.
 ---
 
 ## Loose ends
+
+- [ ] **A boot that segfaults before saying anything should be retried.** Seen
+      once, at generation 0, raising the gadget for `02-cli/00-venv`: exit 2,
+      `no device output at all`, and the same file passed immediately on a
+      re-run. EXPLAINER already argues this case - a mapping failure at startup
+      is "a retry rather than a device crash, because a run legitimately
+      produces hundreds of restarts and even a small per-boot failure rate
+      becomes a run-killer at that count" - but only a clean mapping ERROR takes
+      that path. This arrived as SIGSEGV instead, so it was classified as a
+      firmware crash and killed the run. A segfault at generation 0 with no
+      output has, by definition, corrupted nothing, so retrying it is safe in
+      exactly the way retrying a later crash would not be.
 
 - [ ] Crypto vectors against derived and stored keys — dropped from the first
       cut because those paths need challenge-mode configuration that has not
