@@ -58,11 +58,28 @@ establish, and that is the part a future reader needs.
       it received, which is what proves the multi-report send arrived intact.
       Three traps it turned up are in PLAN: `init` needs the venv on **PATH**,
       it leaves a **daemon running**, and **`gpgconf --kill all` hangs** on it.
-- [ ] **`age_file.js` against the real `age` binary** - PLAN puts this in
-      section 2 rather than beside `03-gui/04-age-file`, because reading a file
-      the real binary wrote needs the plugin, and the plugin needs a device.
-      `04-age-file` already proves the web app writes a correct container; this
-      is the other direction.
+- [x] **`age_file.js` against the real `age` binary** → `02-cli/15-age-file-interop`,
+      4 tests in 8s, `--isolate` 4/4 and `--reverse` green. BOTH directions, not
+      just the one this row asked for: real `age` writes and `age_file.js` reads
+      it, and `age_file.js` writes and real `age` reads it. A reader and a writer
+      can be wrong in opposite ways and still pass one direction each.
+
+      Cheap because the device half goes over RAW HID rather than the tunnel -
+      the derived X-Wing branch has no `CRYPTO_AUTH` gate and does not check
+      `derivedkeymode`, so no button, no config mode, no setup. It is also the
+      first time the KIT sends the derived pair itself: `OKGETPUBKEY` slot 128
+      with `KEYTYPE_XWING`, and `OKDECRYPT` slot 128 as TWO reports with the
+      continuation marker in `buffer[6]` - the framing that used to be broken.
+
+      The kit's recipient is asserted equal to the plugin's for the same label,
+      so a later failure cannot be a silent key mismatch wearing a format
+      failure's clothes.
+
+      Failure KINDS separated on a real container, which `04-age-file` could not
+      do: a corrupted sealed file key fails as an AEAD tag inside `openFileKey`
+      and never reaches the MAC check, because the MAC cannot be computed until
+      the file key is recovered. Only editing the MAC line itself reaches it.
+      The first version of this test had that backwards.
 
 **The sweep, which is now the section's main work.**
 
@@ -332,6 +349,14 @@ Two things that are not optional for any of them, both already measured:
       one part with no ancestor, which is why it is last.
 
 ---
+
+## Order debt, the other direction
+
+- [ ] **Measure `--reverse` across the tree**, the way `--isolate` was measured
+      below. It costs one ordinary run per file rather than a boot per test, so
+      it is far cheaper than that pass was - but it competes with any other work
+      for the device, so it wants a quiet moment. The five sweep files and
+      `15-age-file-interop` are green reversed; nothing else has been checked.
 
 ## Isolation debt
 
