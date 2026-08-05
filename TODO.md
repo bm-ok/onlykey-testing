@@ -23,13 +23,31 @@ implies:
 
 | | what | why it is next |
 |---|---|---|
-| 1 | `loadpqc` / `loadkey` accepting paths (§1) | the last section-2 row; a wiring job, the pieces exist |
-| 2 | HMAC challenge-response (§2) | NOT "HMAC settings" - that half is already done by `11-cli-settings`. This is the Yubikey-style feature the old kit could not reach, and it needs two IPC verbs first |
-| 3 | the remaining pages (§4) | needs a browser and a human for `13-pgp-pqc` |
-| 4 | section 4, the app (§5) | no ancestor anywhere; genuinely last |
+| 1 | **`18-gui-encrypt-decrypt`, the classic non-PQC PGP pages (§4)** | **NOT blocked, and not waiting on a human** - every prerequisite came off this table on 2026-08-05. Start with the HEADLESS tier, which needs no display at all |
+| 2 | `loadpqc` / `loadkey` accepting paths (§1) | the last section-2 row; a wiring job, the pieces exist |
+| 3 | HMAC challenge-response (§2) | NOT "HMAC settings" - that half is already done by `11-cli-settings`. This is the Yubikey-style feature the old kit could not reach, and it needs two IPC verbs first |
+| 4 | `13-pgp-pqc` (§4) | **this** is the one that needs a browser in front of a human. Page debugging, not coverage |
+| 5 | section 4, the app (§5) | no ancestor anywhere; genuinely last |
 | — | the International Travel Edition (§3) | DEFERRED until the kit is complete, by decision - a second BUILD, diffed against this one |
 
-**Three rows came off the top of this table** on 2026-08-05:
+**The two remaining pages used to share one row and must not**, because they are
+blocked on completely different things and merging them made the unblocked one
+look blocked. `13-pgp-pqc` needs a browser and a human. `18-gui-encrypt-decrypt`
+needs neither for its first half: the library tier runs headless, and the three
+things that used to stop it are all gone -
+
+1. **A classic RSA key in RSA slots 1 and 2**, which `onlykey-pgp.js`'s `slotid()`
+   hardcodes (2 to sign, 1 to decrypt). Loaded and asserted about by
+   `01-protocol/19-rsa-keys`.
+2. **The tunnel carrying it.** `01-protocol/23-rsa-tunnel` drives OKSIGN and
+   OKDECRYPT through the WebAuthn transport with the kit's own client and checks
+   both answers against node:crypto.
+3. **The section-2 prerequisite, which dissolved.** It came from `07-pgp-keys`'
+   note that a key must be loaded by `onlykey-cli setpqc` - true for a COMPOSITE
+   key, false for classic RSA, which goes in over the vendor interface with no CLI
+   anywhere. PLAN's build sheet is corrected.
+
+**Five files landed on 2026-08-05**, clearing four rows off the top of this table:
 
 - **RSA key handling** → `01-protocol/19-rsa-keys`, 7 tests in 104s, `--isolate`
   7/7 and `--reverse` green. Every key kind the firmware stores now has coverage
@@ -40,9 +58,17 @@ implies:
   gates green. See §3.
 - **Self-destruct** → `01-protocol/21-self-destruct`, 2 tests in 63s, gated on
   `full-wipe`. See §3.
+- **The RSA slot tail** → `01-protocol/22-rsa-slot-tail`, 2 tests, gated on
+  `storage-files`. Settled a DECIDE row by measurement:
+  [FINDING-rsa-slot-tail.md](FINDING-rsa-slot-tail.md).
+- **Classic RSA over the tunnel** → `01-protocol/23-rsa-tunnel`, 2 tests + 1
+  gated-off, which is prerequisite 2 above and turned up
+  [FINDING-rsa4096-overflow.md](FINDING-rsa4096-overflow.md).
 
 So **both PINs this kit provisioned on every run and had never entered are now
-entered**, and §3's remaining row is a deferred second BUILD rather than a test.
+entered**, §3's remaining row is a deferred second BUILD rather than a test, and
+three findings are written up for upstream - the two above plus
+[FINDING-cli-exit-codes.md](FINDING-cli-exit-codes.md).
 
 **When a file lands, update its section's `last run` in [PLAN.md](PLAN.md)'s
 counts table.** The emulated and hardware columns carry separate dates because
@@ -804,6 +830,40 @@ Two things that are not optional for any of them, both already measured:
       `startEncryption`/`startDecryption` half needs no section-2 step and can
       run in section 3's headless tier, or section 1. PLAN's build sheet still
       says "section 2" for that row and should be corrected when the file lands.
+- [ ] **`18-gui-encrypt-decrypt` - START WITH THE HEADLESS TIER.** This row is
+      row 1 of the table at the top of this file and nothing blocks it. What is
+      known, so the next attempt does not rediscover it:
+
+      **The library half needs no browser and no CLI.** Put it at `03-gui/08-`,
+      beside the rest of the headless tier: load a classic RSA key into slots 1
+      and 2 over the vendor interface (copy `19-rsa-keys`' `loadKey`), then drive
+      `onlykeyApi.pgp().api()`'s `startEncryption`/`startDecryption` through
+      `lib/webenv.js` with `navigator.credentials.get` pointed at
+      `lib/device/ctap2.js`, the way `00-fido2-lib` and `03-xwing-derive` do. A
+      failure there is the LIBRARY. Only once that passes does a browser failure
+      mean the PAGE, which is the whole reason the tiers are split.
+
+      **The device half is already proven, so it is not the variable.**
+      `23-rsa-tunnel` drives OKSIGN and OKDECRYPT over the same transport the page
+      uses and verifies both against node:crypto - a signature against the
+      published modulus, a plaintext against what was sealed to it. If the page
+      fails, the firmware is not the suspect.
+
+      **Of the encrypt page's three modes only `Encrypt Only` avoids the device**,
+      so that one runs with nothing plugged in and is the cheapest "did we break
+      encrypt" check. Sign Only, Encrypt and Sign, and both decrypt modes go to
+      the RSA slots.
+
+      The browser half then carries the two constraints that are already measured
+      and are not optional: serve from `localhost`, NEVER `127.0.0.1` (WebAuthn
+      refuses an IP as an rpId, the pages swallow the error, and the only symptom
+      is an output box that never fills - and the RPID is folded into the
+      derivation, so a cross-check must ask the kit for the same rpId the browser
+      will use); and the device must be up and unlocked BEFORE any page opens, or
+      the startup OKCONNECT times out and Chromium raises a native WebAuthn dialog
+      no CDP command can dismiss.
+
+      Original scope note follows.
 - [ ] **`18-gui-encrypt-decrypt`** - the classic (non-PQC) PGP pages,
       `/app/encrypt` and `/app/decrypt`, which no kit has driven. Split it the
       way the old one did: of the encrypt page's three modes only **Encrypt
@@ -830,9 +890,30 @@ Two things that are not optional for any of them, both already measured:
 
 ---
 
+## The state the emulated fixtures were left in, 2026-08-05
+
+Written down because it is nowhere else and a cold reader will assume otherwise.
+
+- **Nothing was rebuilt and nothing is stale.** Every file this session ran booted
+  from the cached `initialized` fixture (`c3525fff6ff3`) and none of them rebuilt
+  it. The fingerprint covers the built firmware and the state module, so the cache
+  is valid until one of those moves.
+- **No test leaks state into another**, because each file gets a fresh copy of the
+  image - which is why `19-rsa-keys`, `22-rsa-slot-tail` and `23-rsa-tunnel` all
+  write RSA slots 1 and 2 freely and none of them cleans up. Do not add cleanup;
+  it would be dead code.
+- **`~/.cache/onlykey-testing/fixtures/` holds more than one `initialized-*`
+  directory** - older fingerprints from previous firmware builds. Harmless, and not
+  evidence of anything.
+- **`21-self-destruct` factory-resets the device mid-file** and re-provisions with
+  `initialized.apply()`; that is contained to its own run directory's copy.
+
 ## The state the physical key was left in
 
-Recorded because it is nowhere else and the next hardware run inherits it. On
+Recorded because it is nowhere else and the next hardware run inherits it.
+**NOTHING in the 2026-08-05 evening session touched hardware** - every run was
+emulated - so what follows still stands, and the five files that landed that
+evening have never run against a key. On
 2026-08-05 sections 0 and 1 ran against the key (`libraries@83353cf`), and three
 things persist - there is no fixture restore on hardware:
 
@@ -1007,6 +1088,31 @@ Two files are deliberate rather than lazy even within the tally: the lib-agent
 pair and the composite PGP files are built around ONE long operation with
 several assertions about it. Re-running `onlykey-gpg init` per assertion would
 test something different from what the file is for.
+
+## Kit-side items from 2026-08-05, all small and all otherwise unrecorded
+
+- [ ] **SIGABRT is classified as "not the firmware's fault", and it is.**
+      `classifyExit()` maps SIGSEGV to a firmware crash (exit 2) but SIGABRT falls
+      through to external/OOM (exit 5), which reads as "the run produced no
+      verdict". A `_FORTIFY_SOURCE` abort IS a firmware crash and is exactly the
+      class of bug the emulator exists to catch - it is how the RSA-4096 overflow
+      surfaced. `00-sanity/05-exit-classification` covers eight outcomes and
+      SIGABRT is not one of them, so add the case and the oracle together.
+- [ ] **Decide the shape of the RSA-4096 regression test.** `23-rsa-tunnel`'s 4096
+      test currently SKIPS unless `OKT_EXPECT_RSA4096_FIX=yes`, because ungated it
+      aborts the device host and takes the whole file - and both its order gates -
+      with it. That was chosen so the file could land at all, and it keeps the
+      defect in every run's skip list with the finding named in the reason. The
+      alternative is to let it run as a known-aborting reproducer and exclude the
+      file from full-tree runs. Either is a one-line change; the maintainer's call.
+      A test cannot observe this from the inside, because the runner classifies a
+      dead host as a run-level abort before any assertion executes.
+- [ ] **`@noble/ciphers` is now a declared optional dependency** and was
+      previously present only TRANSITIVELY, which is the trap this file warns about
+      - an oracle that can be absent is an oracle that silently stops running.
+      `lib/device/transit.js` needs its `hsalsa`. Declared as `^2.2.0` (the version
+      installed and measured against NaCl's published vector). If the lockfile
+      question below is ever settled, this is another reason to settle it.
 
 ## The CLI never maps failure onto its exit code - ONE CLASS
 

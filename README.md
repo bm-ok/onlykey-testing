@@ -115,6 +115,10 @@ npm install --ignore-scripts # the pure-JS ones only, skipping node-hid's build
 ```
 
 - `node-hid` - the hardware adapter. Nothing emulated needs it.
+- `@noble/ciphers` - `hsalsa`, for NaCl's `crypto_box_beforenm` in
+  `lib/device/transit.js`. Nothing else in the kit needs it and node:crypto has no
+  equivalent. Probed by `transit.probe()`, so a file that needs the tunnel skips
+  with a reason rather than failing to load.
 - `@noble/post-quantum`, `@noble/hashes`, `@noble/curves` - the X-Wing maths in
   `lib/age-pqc.js`. ML-KEM-768 has no `node:crypto` equivalent, so this is the
   one piece of arithmetic in the kit that cannot come from the standard library.
@@ -237,6 +241,13 @@ runs/<stamp>-<pid>/
   files/<file>/       per-file device host: its storage, its markers
 ```
 
+**`run.log` carries the device console ONLY inside a failure block.** A passing
+run logs the runner's own lines and nothing the device said, so grepping it for
+firmware output after a green test finds nothing - which reads exactly like "the
+device never received anything" and is not. Read `device.log` from inside a test
+instead (`device.log.count(re)`, `.tail(n)`). This produced a false negative that
+nearly closed a real finding as read-wrong.
+
 Poll `status.json` for progress. Read `run.log` afterwards. And every run ends
 with exactly one sentinel line, emitted from the exit handler, the uncaught
 exception handler and the unhandled rejection handler alike:
@@ -326,6 +337,64 @@ device.unlock(pin)
 device.enterConfigMode(pin)       long-press 6, relock, unlock again
 device.setTime()                  RAM-only, rebased every boot
 device.generation / device.restarts / device.storageDir
+```
+
+### Driving a vendor command over the WebAuthn tunnel
+
+`lib/device/tunnel.js` frames one and reads the answer out of an assertion, which
+is enough for OKCONNECT and nothing else: `bridge_to_onlykey()` decrypts the whole
+payload before it looks at the command, so an unencrypted request is dispatched as
+noise. `lib/device/transit.js` is the other half.
+
+```js
+const transit = require('../../lib/device/transit');
+if (!transit.probe().ok) skip(transit.probe().why);   // @noble/ciphers is optional
+
+const ours = transit.keypair();
+const reply = await tunnel.send(ctap, {
+  cmd: okmsg.MSG.OKCONNECT, data: transit.connectPayload(ours.publicKey),
+});
+const key = transit.transitKey(reply.data.subarray(0, 32), ours.privateKey);
+// then seal every request payload, and OPEN every response, with transit.box(key, …)
+```
+
+Five things about it that cost time to establish and are load-bearing:
+
+- **`transit_key = SHA256(HSalsa20(X25519(sk, pk), 16 zero bytes))`** - NaCl's
+  `crypto_box_beforenm`, not the raw X25519 point. That is the one piece
+  node:crypto cannot do, hence `@noble/ciphers`' `hsalsa`. `transit.selfTest()`
+  checks it against NaCl's published alice/bob vector; call it before trusting a
+  device answer, because a wrong key produces 32 plausible bytes and a device that
+  replies noise.
+- **The box is plain AES-256-GCM keystream with a TWELVE-BYTE ZERO IV, tag
+  discarded**, so it is length-preserving and its own inverse. Every message
+  reuses one keystream; that is the firmware's design, and mirroring it is the
+  only way to talk to it.
+- **`okcrypto_split_sundae()` does NOT apply to transit**, though
+  `okcrypto_aes_gcm_encrypt2()` looks like it does under `FACTORYKEYS` (which is
+  defined). The function opens `if ((*certified_hw != 1 && *certified_hw != 3) ||
+  s == false) return;` and the box passes `s = false` both ways.
+- **The OKCONNECT payload is 43 bytes, not 32**: `set_time()` reads a big-endian
+  epoch at `[5..8]`, the client public key sits at `[9..40]`, then a browser byte
+  and an OS byte. Confirmed by the derive path reading `client_handle + 43`.
+  `12-webauthn-tunnel` sends 32 bytes and therefore has the device read its pubkey
+  partly out of bounds - harmless for that file's assertions, and the reason
+  nothing had ever derived a transit key before `23-rsa-tunnel`.
+- **Responses are SEALED on this transport and plaintext on the vendor one.**
+  `okcrypto_rsasign()` passes `encrypt=1` for WEBAUTHN and `0` otherwise, so a
+  tunnelled answer must be opened. Measured the hard way: a signature arrived with
+  the right length and the right chunk count and would not verify.
+
+Requests go in **228-byte** chunks (`u2fSignBuffer`'s `57 * 4`) with `opt1` = the
+slot, `opt2` = the final-packet flag and `opt3` a STRICTLY INCREASING packet
+number - `last_request_opt3` drops anything not greater than the last. Polling for
+a chunked response is `cmd: 0xF3` (OKPING) with a further advancing `opt3`.
+
+**And the origin check is not testable here.** `webcryptcheck()` opens with
+`return 2; // Trust all origins for debug firmware` inside `#ifdef DEBUG`, before
+any comparison - so on the emulator every rpId is trusted and no tunnel test
+proves otherwise. That belongs to a production walk.
+
 ```
 
 ## Things the firmware does that will surprise you

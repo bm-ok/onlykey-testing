@@ -16,21 +16,27 @@ wearing the present tense - and the two adapters drift apart at different rates.
 | | emulated | last run | hardware | last run |
 |---|---|---|---|---|
 | sanity | 50 passed, 0 failed | 2026-08-05 17:35Z | 50 passed, 0 failed | 2026-08-05 16:12Z |
-| section 1 | 110 passed, 0 failed | 2026-08-05 18:48Z | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
+| section 1 | 112 passed, 0 failed, 1 skipped | 2026-08-05 21:02Z | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
 | section 2 | 101 passed, 0 failed (gadget) | 2026-08-05 17:35Z | skipped - `client-access` | n/a |
 | section 3 | 72 passed, 0 failed (headless 50 + browser 22) | 2026-08-05 17:35Z | n/a - both tiers drive the emulator by design | n/a |
-| **whole tree** | **333 passed, 0 failed, 1 skipped** | 2026-08-05 18:48Z | **118 passed, 9 skipped-with-reason** | 2026-08-05 16:24Z |
+| **whole tree** | **335 passed, 0 failed, 2 skipped** | 2026-08-05 21:02Z | **118 passed, 9 skipped-with-reason** | 2026-08-05 16:24Z |
 
-**Section 1's 110 is the 17:35Z sweep's 96 plus four new files measured on their
+**Section 1's 112 is the 17:35Z sweep's 96 plus five new files measured on their
 own** - `19-rsa-keys` 7, `20-second-profile` 3, `21-self-destruct` 2,
-`22-rsa-slot-tail` 2 - so it is arithmetic again, which is what the warning below
-is about. All fourteen are green three ways each: natural order, `--isolate` and
-`--reverse`. Neither adapter has run the whole tree since, and **the hardware
-column has not seen any of the four**. All four are section 1 and therefore
-hardware-capable in principle, but two carry gates that will skip on a key:
-`21-self-destruct` needs `OKT_ALLOW_FULL_WIPE=yes` and `22-rsa-slot-tail` needs
-`storage-files`, which no physical key has. Both are the gates working rather
-than gaps.
+`22-rsa-slot-tail` 2, `23-rsa-tunnel` 2 (+1 gated off) - so it is arithmetic
+again, which is what the warning below is about. All sixteen are green three ways
+each: natural order, `--isolate` and `--reverse`. Neither adapter has run the whole
+tree since, and **the hardware column has seen none of the five**. All five are
+section 1 and therefore hardware-capable in principle, but three carry gates that
+will skip on a key or hold a test back:
+
+| file | gate | on a key |
+|---|---|---|
+| `21-self-destruct` | `full-wipe` | skips unless `OKT_ALLOW_FULL_WIPE=yes` |
+| `22-rsa-slot-tail` | `storage-files` | skips - no physical key has a `flash.bin` |
+| `23-rsa-tunnel` | its 4096 test only | skips unless `OKT_EXPECT_RSA4096_FIX=yes`, because loading a 4096-bit key aborts the firmware |
+
+All three are the gates working rather than gaps.
 
 **`--reverse` has now been measured across the tree** the way `--isolate` was -
 55 files in scope, 30 pass, 25 fail, all recorded as debt in TODO rather than
