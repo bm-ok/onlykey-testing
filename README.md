@@ -30,6 +30,11 @@ node bin/okt.js run test/02-cli/10-cli-reads.test.js --test rng
 
 That only works if the test needs nothing an earlier test in its file did, and
 that is a property of how the file was written rather than of the runner.
+A test name should contain the literal thing it covers - the CLI sweep names
+every `it()` after its endpoint - so `--test getlabels` selects exactly one.
+Where one name contains another, `--test` also accepts `/regex/flags`:
+`--test '/\bversion\b/'` selects `version` without also selecting `fwversion`.
+
 `--isolate` checks it: each selected test runs in its own device session, and
 anything that cannot stand alone is named.
 

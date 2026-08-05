@@ -40,9 +40,12 @@ function usage() {
 targets are section names (01-protocol), directories, or single files.
 
 --test runs the tests whose "<suite> <test>" contains the substring, which is
-how a single endpoint is debugged on its own. --isolate runs each selected test
-in ITS OWN device session and reports any that cannot stand alone; it is for
-checking that --test still works after adding tests, not for ordinary runs.
+how a single endpoint is debugged on its own. A /regex/flags value is also
+accepted, for when one endpoint's name contains another's:
+--test '/\\bversion\\b/' selects "version" without also selecting "fwversion".
+
+--isolate runs each selected test in ITS OWN device session and reports any that
+cannot stand alone. It is the gate for new files, and costs a boot per test.
 
 --hardware drives a physical key over /dev/hidraw instead of the emulator. The
 emulator's USB gadget is excluded by default because it is indistinguishable
@@ -77,6 +80,31 @@ function parse(argv) {
 }
 
 /**
+ * Turn a --test value into a predicate over "<suite> <test>".
+ *
+ * Substring by default, which is what a person types. `/re/flags` compiles as a
+ * regular expression instead, and that escape hatch exists for one specific
+ * reason rather than for generality: substring cannot separate an endpoint
+ * whose name contains another endpoint's. Across onlykey-cli's 37 subcommands
+ * there is exactly one such pair - `version` inside `fwversion` - so
+ * `--test version` selects both and no amount of careful test naming fixes it.
+ *
+ *   --test getlabels          one test  (getkeylabels does not contain it)
+ *   --test version            two       (fwversion contains version)
+ *   --test '/\bversion\b/'    one
+ */
+function makeFilter(spec) {
+  if (!spec) return undefined;
+
+  const re = /^\/(.*)\/([a-z]*)$/.exec(spec);
+  if (re) {
+    const rx = new RegExp(re[1], re[2]);
+    return (testName, suiteName) => rx.test(`${suiteName} ${testName}`);
+  }
+  return (testName, suiteName) => `${suiteName} ${testName}`.includes(spec);
+}
+
+/**
  * Run every selected test ALONE, in its own device session.
  *
  * `--test` already runs one test on its own, which is the debugging workflow
@@ -98,6 +126,7 @@ function parse(argv) {
 async function runIsolated(args) {
   const { run, list } = require('../lib/runner');
   const { EXIT: CODES } = require('../lib/report');
+  const match = makeFilter(args.filter);
 
   const wanted = [];
   for (const entry of list(args.targets)) {
@@ -107,7 +136,7 @@ async function runIsolated(args) {
     }
     for (const suite of entry.suites) {
       for (const t of suite.tests) {
-        if (args.filter && !`${suite.name} ${t.name}`.includes(args.filter)) continue;
+        if (match && !match(t.name, suite.name)) continue;
         wanted.push({ file: entry.file, suite: suite.name, test: t.name });
       }
     }
@@ -167,9 +196,7 @@ async function main() {
         adapter: args.adapter,
         quiet: args.quiet,
         timeoutMs: args.timeoutMs || undefined,
-        testFilter: args.filter
-          ? (testName, suiteName) => `${suiteName} ${testName}`.includes(args.filter)
-          : undefined,
+        testFilter: makeFilter(args.filter),
       });
       process.exit(code);
       break;

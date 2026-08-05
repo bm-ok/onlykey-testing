@@ -72,7 +72,7 @@ describe('onlykey-cli, the read-only endpoints', {
     cli.binary('onlykey-cli');                // throws, naming the venv, if absent
   };
 
-  it('prints its own version with no device involved',
+  it('`version` prints the CLI\'s own version, with no device involved',
     async ({ device, assert, signal, log, skip }) => {
       needCli({ skip });
     /*
@@ -95,7 +95,7 @@ describe('onlykey-cli, the read-only endpoints', {
       'the device said something while the CLI printed its own version');
   });
 
-  it('reports the firmware version the kit was told',
+  it('`fwversion` agrees with the firmware the kit was told',
     async ({ device, assert, signal, log, skip }) => {
       needCli({ skip });
     /*
@@ -123,7 +123,7 @@ describe('onlykey-cli, the read-only endpoints', {
       'the CLI and the kit disagree about the firmware version');
   });
 
-  it('lists the profile slots, including one this kit wrote',
+  it('`getlabels` lists the profile slots, including one this kit wrote',
     async ({ device, assert, signal, log, skip }) => {
       needCli({ skip });
       await device.ensureUnlocked(PINS.primary, { signal });
@@ -166,7 +166,7 @@ describe('onlykey-cli, the read-only endpoints', {
         `the label this kit wrote is not in the CLI's list: ${JSON.stringify(lines)}`);
     });
 
-  it('lists the key slots', async ({ device, assert, signal, log, skip }) => {
+  it('`getkeylabels` lists the key slots', async ({ device, assert, signal, log, skip }) => {
     needCli({ skip });
     await device.ensureUnlocked(PINS.primary, { signal });
     /*
@@ -187,7 +187,8 @@ describe('onlykey-cli, the read-only endpoints', {
     assert.ok(lines.some((l) => /ECC Key 16\b/.test(l)), `no ECC Key 16: ${JSON.stringify(lines.slice(-3))}`);
   });
 
-  it('reaches the device over FIDO too, with `ping`', async ({ assert, signal, log, skip }) => {
+  it('`ping` reaches the device over FIDO, not the vendor interface',
+    async ({ assert, signal, log, skip }) => {
     needCli({ skip });
     /*
      * `ping` is not python-onlykey at all - cli.py hands straight off to
@@ -208,7 +209,7 @@ describe('onlykey-cli, the read-only endpoints', {
       'the CLI rejected `ping` as an argument rather than running it');
   });
 
-  it('draws random bytes from the device, and different ones each time',
+  it('`rng` draws random bytes, and different ones each time',
     async ({ assert, signal, log, skip }) => {
       /*
        * `rng hexbytes` is the other solo-backed read, and the only endpoint in

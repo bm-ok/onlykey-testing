@@ -78,18 +78,21 @@ and exit 0 when they dislike their arguments, so what the command did has to be
 visible from a second place - the kit's own vendor interface reading back what
 the CLI wrote, or the device's console saying what it received.
 
-**EVERY TEST IN THESE FILES MUST STAND ALONE.** A single endpoint has to be
+**`--isolate` IS A GATE FOR EVERY NEW FILE FROM HERE ON.** A file does not land
+until `okt run <file> --isolate` is green. A single endpoint has to be
 debuggable on its own with `okt run <file> --test <name>`, which only works if
-no test depends on what an earlier one did. So each brings the device to the
-state it needs itself, through `device.ensureUnlocked()` - the idempotent form
-of `unlock()`, which cannot be called twice because it PRESSES the PIN digits
-and on an unlocked device those are slot presses.
+no test depends on what an earlier one did - so each test brings the device to
+the state it needs itself, through `device.ensureUnlocked()`, the idempotent
+form of `unlock()` (which cannot be called twice: it PRESSES the PIN digits, and
+on an unlocked device those are slot presses).
 
-Check it with `okt run <file> --isolate`, which runs each test in its own device
-session and names any that cannot. Run it after adding endpoints; it costs a
-boot per test. The two lib-agent files and the composite PGP ones do NOT pass
-it, deliberately - they are built around one long operation with several
-assertions about it - so a report naming them is a fact rather than a fault.
+**Every `it()` name must contain the literal endpoint it covers**, so that
+`--test getlabels` selects exactly one test. That is what makes the gate worth
+having rather than merely true.
+
+Existing files that fail the gate are **debt, tracked below, retrofitted
+opportunistically** - the sweep is worth more than a clean isolation record. See
+"Isolation debt" under Not tests.
 
 - [x] **`10-cli-reads`** - `version` `fwversion` `getlabels` `getkeylabels`
       `ping` `rng`. 7 tests in 10s, first run green. The version is checked
@@ -218,6 +221,70 @@ Two things that are not optional for any of them, both already measured:
       one part with no ancestor, which is why it is last.
 
 ---
+
+## Isolation debt
+
+Measured 2026-08-05 with `okt run <file> --isolate` across the tree:
+**40 files, 232 tests - 17 files pass, 23 fail, 148/232 tests (64%) stand alone.**
+
+Retrofitted **opportunistically**, when a file is being worked on for another
+reason. Not a project of its own: the sweep is worth more than a clean
+isolation record. `--isolate` is a gate for NEW files only.
+
+The pattern is the same everywhere: test 1 establishes something - an unlock, a
+registered credential, a generated key, a written slot - and tests 2..n assert
+about it. `device.ensureUnlocked()` fixes the unlock half cheaply; the rest
+means each test redoing the establishing step, which is sometimes right and
+sometimes changes what the file is testing.
+
+| section | files pass/total | tests alone |
+|---|---|---|
+| `00-sanity` | **7/7** | 50/50 |
+| `01-protocol` | 3/13 | 38/68 |
+| `02-cli` | 4/11 | 33/64 |
+| `03-gui` headless | 3/8 | 26/49 |
+| `04-app` | 1/1 | 1/1 |
+
+Sanity is clean because those files are `device: false` - there is no device
+state to inherit. Files that fail, worst first:
+
+| file | alone |
+|---|---|
+| `01-protocol/08-slot-keyboard` | 1/6 |
+| `01-protocol/11-fido2-ceremony` | 1/6 |
+| `01-protocol/12-webauthn-tunnel` | 1/6 |
+| `02-cli/03-pqc-decrypt` | 1/6 |
+| `02-cli/06-composite-ops` | 1/7 |
+| `02-cli/07-derived-xwing` | 1/7 |
+| `03-gui/03-xwing-derive` | 1/6 |
+| `03-gui/07-pgp-keys` | 1/6 |
+| `01-protocol/09-fido-ctaphid` | 2/4 |
+| `01-protocol/02-restart` | 2/4 |
+| `02-cli/04-pqc-no-device` | 2/5 |
+| `02-cli/05-composite-load` | 2/4 |
+| `02-cli/08-lib-agent-ssh` | 2/7 |
+| `03-gui/00-fido2-lib` | 2/6 |
+| `03-gui/02-derive` | 2/6 |
+| `03-gui/06-composite-key` | 2/5 |
+| `01-protocol/10-backup-restore` | 3/9 |
+| `01-protocol/03-wipe` | 3/5 |
+| `01-protocol/04-provisioning` | 3/4 |
+| `01-protocol/07-unlock` | 3/4 |
+| `02-cli/01-pqc-keygen` | 3/5 |
+| `02-cli/09-lib-agent-gpg` | 5/9 |
+| `01-protocol/01-debug-console` | 5/6 |
+
+**`03-gui/10-session`, `11`, `12`, `19-stop` (22 tests) are not in the tally and
+are not debt.** They are structurally non-isolatable BY DESIGN: `10-session`
+starts nw.js and the express server and `19-stop` stops them, which is the
+kit's no-hooks rule working as intended. Running `--isolate` over them would
+start a browser and a server with nothing to stop them and orphan both, so it
+was not run rather than run and cleaned up after.
+
+Two files are deliberate rather than lazy even within the tally: the lib-agent
+pair and the composite PGP files are built around ONE long operation with
+several assertions about it. Re-running `onlykey-gpg init` per assertion would
+test something different from what the file is for.
 
 ## Not tests
 
