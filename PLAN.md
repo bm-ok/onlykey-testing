@@ -14,12 +14,23 @@ Counts are as of 2026-08-05, both adapters green, hardware on `libraries@83353cf
 | | emulated | hardware |
 |---|---|---|
 | sanity | 50 passed, 0 failed | 50 passed, 0 failed |
-| section 1 | 77 passed, 0 failed | 59 passed, 0 failed, 9 skipped + 3 untried |
+| section 1 | 77 passed, 0 failed | 68 passed, 0 failed, 9 skipped |
 | section 2 | 101 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
 | section 3 | 72 passed, 0 failed (headless 50 + browser 22) | n/a - both tiers drive the emulator by design |
-| **whole tree** | **300 passed** | **96 passed, 9 skipped-with-reason** |
+| **whole tree** | **300 passed** | **118 passed, 9 skipped-with-reason** |
 
-The key is flashed with `libraries@83353cf` and sections 0 and 1 pass on it.
+The key is flashed with `libraries@83353cf` and sections 0 and 1 pass on it -
+re-run 2026-08-05 after `13-large-response` and `14-stored-keys` landed, and both
+pass on hardware unchanged. The nine hardware skips are `00-boot` x2 and
+`02-restart` x2 (the emulator's two-process lifecycle) and `05-snapshot` x5
+(`image-snapshots`).
+
+**`13-large-response` means something on hardware that it cannot mean on the
+emulator.** `core-override/okemu_usb.cpp`'s `usb_rawhid_send2()` is a one-line
+call straight to `okemu_hid_emit` - no TX queue, no `TX_PACKET_LIMIT`, no path
+that returns 0 - so the five-retry loop in `send_transport_response()` never
+retries there and the truncation the file guards is unreachable. On a real key
+the queue exists, and 3309 bytes over 52 reports arrived whole.
 Section 2 cannot run against a physical key at all (`client-access`), and
 section 3's headless tier drives the emulator on purpose - so those two stay
 emulator-only by construction rather than by omission.
