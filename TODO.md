@@ -173,14 +173,48 @@ opportunistically** - the sweep is worth more than a clean isolation record. See
       and an OpenPGP private key respectively, which that file would have to
       generate. `03-gui/06-composite-key` already generates the first through the
       web app's own library, so the pieces exist; it is a wiring job.
-- [ ] **`13-cli-lifecycle`** - `init` `set-pin` `change-pin` `settime` `reset`
-      `restore` `wink`. These change what the device IS. `reset` factory-resets
-      and needs the same capability gate as self-destruct; `init` and the PIN
-      commands read from stdin with `prompt_toolkit`, which is a different
-      driving problem from everything above.
-- [ ] **`14-cli-fido`** - `credential` `loadfirmware`. The second interface, and
-      `loadfirmware` is the one endpoint that can leave a physical key needing
-      `okt flash` - emulated-only, like `OKFWUPDATE`.
+- [x] **`13-cli-lifecycle`** - 7 endpoints, 7 tests in 67s, `--isolate` 7/7.
+      `settime` `password` `totpkey` `gkey` `backuppassphrase` `restore` `init`.
+
+      **Regrouped**: `set-pin` `change-pin` `reset` `wink` moved to
+      `14-cli-fido`. None of them is an OnlyKey command - cli.py hands all four
+      to `solo.cli.key()`, so they reach the device over FIDO, and `set-pin`
+      sets the FIDO2 CLIENT PIN rather than the device PIN its name suggests.
+      The five-file split is unchanged; only which file they live in.
+
+      prompt_toolkit drives from a pipe - it warns and redraws oddly in captured
+      output, but the value arrives intact, so `input:` on `cli.run()` is enough
+      and no pty is needed.
+
+      Best assertion in the sweep is here and is on the KEYBOARD surface: a
+      password written by the command line is read back by pressing the button
+      and decoding what the device types. Every other test in the sweep checks
+      that a write was ACCEPTED; this checks the secret that comes out is the
+      one that went in.
+
+      **`init` is silent on a set-up device until config mode, then re-arms the
+      PIN machine** - and prints exactly the same script either way, exiting 0.
+      One of those two outcomes is a key an Enter-and-six-presses away from a
+      replaced PIN, and nothing in the output says which just happened.
+
+      `backuppassphrase` is length-checked host-side (>= 25 characters) before
+      anything reaches the wire, which is the right shape - a weak backup
+      passphrase is what would make an exported backup worth stealing.
+
+      `gkey` and `totpkey` are indistinguishable on any client surface: one
+      base32-decodes and the other does not, and the device acknowledges both
+      with "Successfully set 2FA Key". Telling them apart needs a TOTP code
+      checked against a host computation, which is the deferred challenge-mode
+      work in PLAN's loose ends.
+- [ ] **`14-cli-fido`** - `credential` `loadfirmware` `set-pin` `change-pin`
+      `reset` `wink`. Everything that routes through `solo.cli.key()`, which is
+      the CLI's other half: it reaches the device over FIDO rather than the
+      vendor interface, and fails in a different language when it fails.
+      `set-pin` and `change-pin` are the FIDO2 CLIENT PIN, not the device PIN.
+      `reset` is a FIDO2 authenticator reset - destructive to credentials, so it
+      needs a capability gate the way self-destruct does. `loadfirmware` is the
+      one endpoint that can leave a physical key needing `okt flash`, so it is
+      emulated-only, like `OKFWUPDATE`.
 
 ## 2. Section 1 - the protocol surface nothing has ever touched
 
