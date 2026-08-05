@@ -214,12 +214,24 @@ the second fails the page is at fault rather than the device.
 | loading a composite key | pgp-pqc | `17-nodejs` | - | ✅ `02-cli/05-composite-load` | - |
 | `composite_sign` / `composite_decrypt` | pgp-pqc | `17-nodejs` | `17-nwjs` | ✅ `02-cli/06-composite-ops` - both halves of both operations, and TC-11's whole round trip | ☐ |
 | key selection (`onlykey-pgp.js`) | encrypt, decrypt | - | - | ✅ `07-pgp-keys` | - |
-| `startEncryption` / `startDecryption` | encrypt, decrypt | `18`'s `pgp_env` half | `18` | **section 2** | ☐ |
+| `startEncryption` / `startDecryption` | encrypt, decrypt | `18`'s `pgp_env` half | `18` | ☐ **section 3, not section 2** | ☐ |
 | age file format (`age_file.js`) | age-derive | - | - | ✅ `04-age-file` | ✅ via `12-age-derive` |
 | vendored openpgp fork (`openpgp_loader.js`) | pgp-pqc | `17-nodejs`'s `openpgp_node` | - | ✅ used by `06` | - |
 | composite blobs (`composite_pgp.js`) | pgp-pqc | `17-nodejs` | - | ✅ `05-composite-blob` | - |
 | vault | vault | - | - | **placeholder** | **placeholder** |
 | chat | chat | - | - | **placeholder** | **placeholder** |
+
+**The `startEncryption`/`startDecryption` row said "section 2" and that was
+wrong.** The reasoning was `07-pgp-keys`': the device-backed half needs a key the
+device holds, and loading a COMPOSITE one needs `onlykey-cli setpqc` because
+`OKSETPRIV` is not reachable over the browser transport. True for a composite key.
+**Not true for a classic RSA key** - that goes into an RSA slot with `OKSETPRIV`
+over the VENDOR interface, which `01-protocol/19-rsa-keys` does from the kit with
+no CLI at all, and `01-protocol/23-rsa-tunnel` then drives sign and decrypt
+against it through the tunnel. So the classic pages carry no section-2
+prerequisite and their headless tier belongs in section 3 with the rest of the
+library work. The PQC page keeps its section-2 prerequisite, because a composite
+key genuinely does need `setpqc`.
 
 **`vault` and `chat` are placeholders**, per the maintainer - future features,
 not shipped ones, so their absence from the sheet above is deliberate rather

@@ -1008,6 +1008,34 @@ pair and the composite PGP files are built around ONE long operation with
 several assertions about it. Re-running `onlykey-gpg init` per assertion would
 test something different from what the file is for.
 
+## The CLI never maps failure onto its exit code - ONE CLASS
+
+- [ ] **Consolidated in [FINDING-cli-exit-codes.md](FINDING-cli-exit-codes.md),
+      which is the version to send.** This had been recorded three times as three
+      separate surprises - `setpqc` claiming success for a load the device
+      refused, `set-pin` exiting 0 while printing a traceback, `setkey` storing
+      nothing on the 4096 path - and they are three routes into one hole. A
+      maintainer can fix a class and cannot fix three symptoms, so the scattered
+      mentions elsewhere in this file now point here.
+
+      Three routes, needing three different fixes:
+
+      | | route | measured on |
+      |---|---|---|
+      | a | prints its own success string, never reads the reply | `setpqc` |
+      | b | reads the reply, prints it verbatim, never tests it for `Error` - or for being EMPTY | seven settings commands, `setkey`, `init` |
+      | c | catches a host-side exception, prints it, falls off the end | `credential`, `set-pin`, `change-pin` |
+
+      **Twelve subcommands confirmed, roughly 25 of the 37 expected** - every
+      command that WRITES, because they all bottom out in `setslot` or `setkey`.
+      The six read commands are not expected to share it: a failed read is visible
+      as missing output rather than as a false success. The write-up names which is
+      which.
+
+      Worth knowing before fixing: `02-cli/14-cli-fido` asserts the CURRENT
+      behaviour deliberately, so a fix makes that file fail, which is the
+      convention working rather than a regression.
+
 ## The venv's solo / python-fido2 mismatch
 
 - [ ] **Decide whether to pin them back into step.** `credential`, `set-pin` and
