@@ -156,8 +156,17 @@ the second fails the page is at fault rather than the device.
 | age file format (`age_file.js`) | age-derive | - | - | ✅ `04-age-file` | ✅ via `12-age-derive` |
 | vendored openpgp fork (`openpgp_loader.js`) | pgp-pqc | `17-nodejs`'s `openpgp_node` | - | ✅ used by `06` | - |
 | composite blobs (`composite_pgp.js`) | pgp-pqc | `17-nodejs` | - | ✅ `05-composite-blob` | - |
-| vault | vault | - | - | ☐ | ☐ |
-| chat | chat | - | - | - | ☐ |
+| vault | vault | - | - | **placeholder** | **placeholder** |
+| chat | chat | - | - | **placeholder** | **placeholder** |
+
+**`vault` and `chat` are placeholders**, per the maintainer - future features,
+not shipped ones, so their absence from the sheet above is deliberate rather
+than a gap. Worth saying plainly because it is not visible from the source:
+`vault.js` is 513 lines with a complete-looking UI (add, list, export, import,
+lock-all, a policy field) and calls the same derive pair the password-generator
+does, so a reader would reasonably take it for a finished feature and write
+tests against it. `chat.js` is 50 lines and obviously a stub. Neither is worth
+testing until somebody says it is.
 
 `age_file.js` is worth calling out: the web app implements the **age file format
 itself** - HPKE seal/open, stanza parsing, the header MAC, chunked STREAM - so
@@ -250,7 +259,7 @@ What that leaves is lopsided, and worth knowing before picking anything up:
 | sanity | 0 | done |
 | protocol | 1 (partial) | nothing - `10`'s transport is done; the derive command is not |
 | cli | 4 | nothing - the section runs; these are now just tests to write |
-| gui | 2 | a display, which now exists |
+| gui | 2 | a display, which now exists - `vault`/`chat` are placeholders, not gaps |
 
 So "get all the tests over" is mostly a CLI problem, not a protocol one. Stage 3
 is done and the section runs; the four rows left there are tests to write rather
@@ -578,9 +587,14 @@ slot fields are worse — two of twenty-eight.
       having: **an age file sealed by the browser is opened by this kit**, with
       its own maths and its own transport. Self-consistency would have proved
       nothing; interoperability is the thing that breaks quietly
-- [ ] The rest of the pages (`03-gui/13..18`): encrypt, decrypt, pgp-pqc, vault. Every feature they call is already proven at the library
-      level, so a failure there now means the PAGE - which is the whole reason
-      the tiers are split
+- [ ] The pages that are left: encrypt, decrypt, pgp-pqc. `vault` and `chat` are
+      placeholders and are not on the list. Every feature these three call is
+      already proven at the library level, so a failure there means the PAGE -
+      which is the whole reason the tiers are split. Unlike the two pages
+      already done they are NOT self-contained: both PGP pages need a key the
+      device actually holds, and loading a composite one needs
+      `onlykey-cli setpqc`, because `OKSETPRIV` is not reachable over the
+      browser transport at all. So they carry a section-2 prerequisite
 - [ ] **`localhost`, never `127.0.0.1`.** WebAuthn refuses an IP address as an
       rpId, so a page served from `127.0.0.1` dies with "SecurityError: This is
       an invalid domain" before the device is contacted - and the pages swallow
