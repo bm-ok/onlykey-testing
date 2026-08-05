@@ -11,8 +11,8 @@ Counts are as of 2026-08-05, both adapters green, hardware on `libraries@83353cf
 | sanity | 37 passed, 0 failed | 37 passed, 0 failed |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed, 9 skipped |
 | section 2 | 23 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
-| section 3 | 50 passed, 0 failed (headless tier) | n/a - the headless tier drives the emulator by design |
-| **whole tree** | **178 passed** | **96 passed, 9 skipped-with-reason** |
+| section 3 | 57 passed, 0 failed (headless 50 + browser 7) | n/a - both tiers drive the emulator by design |
+| **whole tree** | **185 passed** | **96 passed, 9 skipped-with-reason** |
 
 The key is flashed with `libraries@83353cf` and sections 0 and 1 pass on it.
 Section 2 cannot run against a physical key at all (`client-access`), and
@@ -72,7 +72,7 @@ requirements:
 | | files | needs | runs in CI |
 |---|---|---|---|
 | the library, headless | `03-gui/00-09` | nothing a browser has - shim + `lib/device/ctap2.js` | yes |
-| the page, in nw.js | `03-gui/10+` | `display`, and a device the page can reach | no |
+| the page, in nw.js | `03-gui/10+` | `display`, `nwjs`, and a device the page can reach | no |
 
 Putting the library at the front rather than in section 1 is the point of it: if
 the client cannot talk to the device headlessly, launching a browser to watch it
@@ -562,7 +562,22 @@ slot fields are worse — two of twenty-eight.
 - [ ] **In section 2, not here:** read a file written by the real `age` binary
       with `age_file.js`. That needs the plugin, and decrypting one needs a
       device, so it belongs beside `03-pqc-decrypt`
-- [ ] Section 3's browser tier (`03-gui/10+`), the web app in nw.js
+- [x] Section 3's browser tier is standing up: `lib/gui.js` runs the web app's
+      own express server and nw.js as TWO separate process groups, and drives
+      the window over CDP with Node's built-in WebSocket - no dependency, and no
+      `ensure.js`-style cleanup, because a crashed browser can no longer orphan
+      the server it never owned. `10-session` starts them, `19-stop` stops them
+      and asserts the ports came free
+- [ ] The pages themselves (`03-gui/11..18`). Every feature they call is already
+      proven at the library level by the headless tier, so a failure there now
+      means the PAGE - which is the whole reason the tiers are split
+- [ ] **The ordering that is not optional:** the app's pages talk to the device
+      as they load, and one opened before the OnlyKey is unlocked has its
+      startup OKCONNECT time out - at which point Chromium raises a NATIVE
+      WebAuthn dialog, an OS window no CDP command can dismiss, and the session
+      is wedged until restarted. Device up and unlocked first, always. The
+      landing page in `tools/nwjs` makes no device call, which is what makes it
+      safe to start on
 - [ ] Section 4, the OnlyKey app — never driven from a harness at all
 - [ ] Services started and stopped by *visible* test files at the section
       boundaries, never hooks; cleanup tracks process groups, because nw.js can

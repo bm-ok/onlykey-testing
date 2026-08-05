@@ -1,0 +1,13 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>onlykey-testing</title>
+<body style="background:#111;color:#0f0;font:16px monospace;padding:2em">
+<h2>onlykey-testing: nw.js session</h2>
+<p>
+  This landing page makes <b>no device call</b>, deliberately. The web app's
+  pages talk to the device as they load, and a page opened before the OnlyKey is
+  unlocked has its startup OKCONNECT time out - which raises a native WebAuthn
+  dialog that nothing on the CDP side can dismiss, wedging the session.
+</p>
+<p>Tests open their own windows, after the device is up. See lib/gui.js.</p>
+</body>

@@ -1,0 +1,12 @@
+{
+  "name": "okt-nwjs",
+  "version": "1.0.0",
+  "description": "The window the kit opens. Only nw.js loads this - it is not part of the kit's own package.",
+  "private": true,
+  "main": "index.html",
+  "window": {
+    "width": 1024,
+    "height": 768,
+    "show": true
+  }
+}
