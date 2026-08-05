@@ -8,11 +8,11 @@ Counts are as of 2026-08-05, both adapters green, hardware on `libraries@83353cf
 
 | | emulated | hardware |
 |---|---|---|
-| sanity | 37 passed, 0 failed | 37 passed, 0 failed |
+| sanity | 45 passed, 0 failed | 45 passed, 0 failed |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed, 9 skipped |
 | section 2 | 31 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
 | section 3 | 72 passed, 0 failed (headless 50 + browser 22) | n/a - both tiers drive the emulator by design |
-| **whole tree** | **208 passed** | **96 passed, 9 skipped-with-reason** |
+| **whole tree** | **216 passed** | **96 passed, 9 skipped-with-reason** |
 
 The key is flashed with `libraries@83353cf` and sections 0 and 1 pass on it.
 Section 2 cannot run against a physical key at all (`client-access`), and
@@ -649,28 +649,11 @@ slot fields are worse — two of twenty-eight.
 
 ## Loose ends
 
-- [ ] **A boot that segfaults should be retried, and this is now the single
-      biggest source of noise in the tree.** Twice in roughly eight full runs on
-      2026-08-05, and it is not tied to any test:
-
-      - once at **generation 0**, raising the gadget for `02-cli/00-venv`: exit
-        2, `no device output at all`
-      - once at **generation 1**, on the restart inside `03-gui/02-derive`
-
-      Both times the file passed immediately on a re-run - `02-derive` twice in
-      a row, 6/6 - so nothing about the tests is implicated. It is the boot-time
-      mapping collision EXPLAINER already describes, arriving as SIGSEGV rather
-      than as a clean mapping error.
-
-      That distinction is the whole bug. EXPLAINER argues the case already: a
-      mapping failure at startup is "a retry rather than a device crash, because
-      a run legitimately produces hundreds of restarts and even a small per-boot
-      failure rate becomes a run-killer at that count". Only a clean mapping
-      ERROR takes that path today; a SIGSEGV is classified as a firmware crash
-      and aborts the run. A crash during boot has, by definition, corrupted
-      nothing, so retrying it is safe in exactly the way retrying a later crash
-      would not be - and note it is NOT limited to generation 0, so the retry
-      belongs on every boot rather than only the first.
+- [x] **A boot that segfaults is now retried**, and the whole exit
+      classification is checked in the sanity section rather than only by
+      whatever a run happens to produce. `classifyExit()` is a pure function;
+      `00-sanity/05-exit-classification` covers all eight outcomes, including
+      the two that used to need a rare real crash to reach.
 
 - [ ] Crypto vectors against derived and stored keys — dropped from the first
       cut because those paths need challenge-mode configuration that has not
