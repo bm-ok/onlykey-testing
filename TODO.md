@@ -387,9 +387,36 @@ Plane 2, CTAP2 proper - the ceremony works; the extensions do not exist:
 
       **The `okcore.cpp:7645` note was wrong** - see PLAN. Two unrelated
       features that share the word HMAC.
-- [ ] **`credProtect`** - the other advertised extension.
-- [ ] **Resident keys** (`rk` is true), **`credMgmt`**, **`CLIENT_PIN`**,
-      **`RESET`**.
+- [x] **`credProtect`** → `01-protocol/16-credprotect`, 4 tests. Ungated - no PIN
+      is needed to set any level, so it runs against a key with nothing to opt
+      into. All three levels echoed as themselves; level 4 is accepted but
+      echoed as NOTHING rather than stored; a credential that asked for nothing
+      comes back with nothing; and a level-3 credential is refused with
+      NO_CREDENTIALS on a device that cannot verify a user, which is the one
+      thing level 3 is for.
+- [x] **Resident keys** → `01-protocol/17-resident-keys`, 4 tests. Ungated.
+      Discoverable with an empty allowList, the user handle comes back,
+      non-resident credentials are correctly INVISIBLE to an empty allowList
+      (or any site could enumerate the key), two users at one rpId report
+      `numberOfCredentials: 2` and `GET_NEXT_ASSERTION` walks them, and a bare
+      GET_NEXT_ASSERTION is refused. Every test uses its own rpId - resident
+      credentials persist for the whole file, so a shared one would let an
+      earlier test answer a later one's question.
+- [x] **`credMgmt`, `CLIENT_PIN`, `RESET`** → `01-protocol/18-clientpin-credmgmt`,
+      5 tests, gated on **`fido-reset`**.
+
+      **The chain was verified before the file was written**, since three rows
+      here have dissolved on inspection: `clientPin: false` means SUPPORTED BUT
+      NOT SET - the option would be absent if PINs were unsupported - so
+      credMgmt is reachable behind `setPin` -> `getPinToken` -> pinUvAuthParam,
+      and both `0x0A` and the `0x41` FIDO_2_1_PRE alias answer.
+
+      Two firmware behaviours worth knowing, both found by `--reverse`:
+      a client PIN **cannot be unset**, only reset away; and the bad-pinAuth
+      budget is **3 per BOOT**, which `ctap_reset()` does NOT restore - only a
+      reboot or a successful auth does. So a second bad attempt escalates from
+      PIN_AUTH_INVALID to PIN_AUTH_BLOCKED. Every test therefore reboots AND
+      resets before it starts.
 
 And the two carried-over rows that came over only partly:
 

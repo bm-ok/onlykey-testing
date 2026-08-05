@@ -16,10 +16,10 @@ wearing the present tense - and the two adapters drift apart at different rates.
 | | emulated | last run | hardware | last run |
 |---|---|---|---|---|
 | sanity | 50 passed, 0 failed | 2026-08-05 | 50 passed, 0 failed | 2026-08-05 16:12Z |
-| section 1 | 83 passed, 0 failed | 2026-08-05 | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
+| section 1 | 96 passed, 0 failed | 2026-08-05 | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
 | section 2 | 101 passed, 0 failed (gadget) | 2026-08-05 | skipped - `client-access` | n/a |
 | section 3 | 72 passed, 0 failed (headless 50 + browser 22) | 2026-08-05 16:34Z | n/a - both tiers drive the emulator by design | n/a |
-| **whole tree** | **306 passed** | | **118 passed, 9 skipped-with-reason** | 2026-08-05 |
+| **whole tree** | **319 passed** | | **118 passed, 9 skipped-with-reason** | 2026-08-05 |
 
 How each side was measured is not the same, and it matters when reading them:
 
@@ -683,8 +683,10 @@ and stays in section 1, which is what makes it CI-able.
       again — `set_built_in_pin()` near line 855 — and the dispatcher reaches it
       only on a DUO with an uninitialized device. Nothing here goes near any of
       the three.
-- [ ] `credProtect`, the other advertised extension
-- [ ] Resident keys (`rk` is true), `credMgmt`, `CLIENT_PIN`, `RESET`
+- [x] `credProtect` — `01-protocol/16-credprotect`, 4 tests, ungated
+- [x] Resident keys — `01-protocol/17-resident-keys`, 4 tests, ungated
+- [x] `credMgmt`, `CLIENT_PIN`, `RESET` — `01-protocol/18-clientpin-credmgmt`,
+      5 tests, gated on the new `fido-reset` capability
 - [x] The plane-3 tunnel: `lib/device/tunnel.js` plus
       `12-webauthn-tunnel.test.js`, passing on both adapters. `OKCONNECT`
       through a fabricated `allowList` credential ID returns the device's
