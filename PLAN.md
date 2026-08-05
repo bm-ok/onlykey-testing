@@ -15,9 +15,9 @@ Counts are as of 2026-08-05, both adapters green, hardware on `libraries@83353cf
 |---|---|---|
 | sanity | 50 passed, 0 failed | 50 passed, 0 failed |
 | section 1 | 68 passed, 0 failed | 59 passed, 0 failed, 9 skipped |
-| section 2 | 64 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
+| section 2 | 76 passed, 0 failed (gadget) | skipped - `client-access`, the kit's adapter holds the nodes the CLI needs |
 | section 3 | 72 passed, 0 failed (headless 50 + browser 22) | n/a - both tiers drive the emulator by design |
-| **whole tree** | **254 passed** | **96 passed, 9 skipped-with-reason** |
+| **whole tree** | **266 passed** | **96 passed, 9 skipped-with-reason** |
 
 The key is flashed with `libraries@83353cf` and sections 0 and 1 pass on it.
 Section 2 cannot run against a physical key at all (`client-access`), and

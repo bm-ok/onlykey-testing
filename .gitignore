@@ -5,3 +5,6 @@ package-lock.json
 # socket, its restart markers and the storage dir the device host boots from.
 # Post-mortem artefacts, not source.
 runs/
+
+# a stray GnuPG homedir, from an onlykey-gpg run whose --homedir was a JS null
+null/

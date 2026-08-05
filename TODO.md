@@ -90,6 +90,21 @@ on an unlocked device those are slot presses).
 `--test getlabels` selects exactly one test. That is what makes the gate worth
 having rather than merely true.
 
+**Every test says which surface it asserts on.** A production key ships without
+SEREMU, so any assertion that reads the debug console cannot run in a future
+production walk, while the keyboard, vendor and FIDO surfaces can - see
+[PRODUCTION.md](PRODUCTION.md). Where an assertion can be made on a
+client-visible surface without weakening it, make it there. Where the console is
+genuinely the only oracle - counting button challenges, flash erase counts,
+which SLOT a write went to - use it and say so. The words, so the split is
+greppable rather than discovered later:
+
+```
+/* SURFACE: vendor - survives into a production walk. */
+/* SURFACE: console - does NOT survive a production walk, and is used here
+ * because <the reason nothing client-visible can answer this>. */
+```
+
 Existing files that fail the gate are **debt, tracked below, retrofitted
 opportunistically** - the sweep is worth more than a clean isolation record. See
 "Isolation debt" under Not tests.
@@ -104,14 +119,31 @@ opportunistically** - the sweep is worth more than a clean isolation record. See
       `getlabels` picks its slot layout with `okversion[19] == 'c'`, a fixed
       INDEX into the model string, which lands on the hardware-variant
       character only for a version string of exactly this length.
-- [ ] **`11-cli-settings`** - the mode family: `2ndprofilemode` `backupkeymode`
-      `derivedkeymode` `hmackeymode` `storedkeymode` `idletimeout` `keylayout`
-      `keytypespeed` `ledbrightness` `lockbutton` `sysadminmode` `touchsense`
-      `wipemode` `backuppassphrase`. Fourteen, all `OKSETSLOT`-shaped writes to
-      settings rather than key material, and every one readable back. Note
-      `derivedkeymode` is ALREADY written by `03-gui/02-derive`, over the kit's
-      own vendor interface - so the CLI and the kit writing the same field is a
-      cross-check that is already half built.
+- [x] **`11-cli-settings`** - 13 endpoints, 13 tests in 53s, `--isolate` 13/13.
+      `2ndprofilemode` `backupkeymode` `derivedkeymode` `hmackeymode`
+      `storedkeymode` `idletimeout` `keylayout` `keytypespeed` `ledbrightness`
+      `lockbutton` `sysadminmode` `touchsense` `wipemode`.
+
+      **Entirely on the vendor surface bar one assertion**, because the firmware
+      acknowledges every one of these BY NAME - "Successfully set keyboard
+      layout" is a different string from "Successfully set typespeed" - so the
+      acknowledgement identifies the field without a debug line. The refusals
+      are equally specific, and "Error not in config mode" IS the security
+      property arriving where an attacker would see it.
+
+      `backuppassphrase` moved to `13-cli-lifecycle`: it reads stdin with
+      prompt_toolkit and goes out as OKSETPRIV, so it is neither argv-driven nor
+      a setslot.
+
+      Three findings. **`onlykey-cli` exits 0 when the device refuses** - all
+      seven refusals here return 0 with an error on stdout, which is this
+      section's "exit code is not coverage" rule demonstrated rather than
+      asserted. **Config mode is sticky and has no exit but a reboot**, and
+      `wipemode`/`backupkeymode` do not merely need it, they SUCCEED inside it -
+      so a predecessor entering config mode inverts their assertion rather than
+      erroring. **--isolate does not catch that class**: those tests pass alone,
+      they are broken by a predecessor rather than dependent on one. Establishing
+      the state you assert about is the rule that covers both directions.
 - [ ] **`12-cli-slots`** - `setslot` `wipeslot` `setkey` `wipekey` `loadkey`
       `genkey` `loadpqc` `setpqc`. This is the same work as section 1's "slot
       fields beyond LABEL and PASSWORD" row below, approached from the other

@@ -55,6 +55,35 @@ PRESSING the PIN digits, so on an already-unlocked device those are slot
 presses, the device types whatever the slots hold, and the call waits for an
 `UNLOCKED` that will not come again. `ensureUnlocked()` reads the status first.
 
+Standing alone is not the same as being unaffected by what ran before. A test
+whose claim is "the device refuses this because config mode is off" passes in
+isolation and inverts when a predecessor turns config mode on - and config mode
+has no exit but a reboot. `--isolate` does not measure that direction, so the
+rule is to ESTABLISH the state you are asserting about rather than to inherit it.
+
+### Which surface a test reads
+
+A production key ships without SEREMU - it is a debugging interface, and on a
+security key it is a key-extraction path - so an assertion that reads the debug
+console cannot run in a future production walk, while the keyboard, vendor
+(`0xFFAB`) and FIDO (`0xF1D0`) surfaces can. [PRODUCTION.md](PRODUCTION.md) has
+the argument.
+
+Prefer a client-visible surface wherever it does not weaken the assertion, and
+mark every test with the one it uses, in these words:
+
+```js
+/* SURFACE: vendor - survives into a production walk. */
+/* SURFACE: console - does NOT survive a production walk, and is used here
+ * because nothing a client can see reports which SLOT a write went to. */
+```
+
+More is reachable on the vendor surface than it first looks. The firmware
+acknowledges each settings write by name, so `02-cli/11-cli-settings` asserts 13
+endpoints with one console read between them. Genuinely console-only: counting
+button challenges, counting flash sector erases, and reading back a derived
+private key.
+
 Nothing has to be installed to run the kit. Everything in `package.json` is an
 **optional** dependency, and a file that needs one skips itself with a stated
 reason rather than failing:
