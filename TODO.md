@@ -744,6 +744,66 @@ Two things that are not optional for any of them, both already measured:
   landing page in `tools/nwjs` makes no device call, which is what makes it safe
   to start on.
 
+- [ ] **THE `ctap_end_get_assertion()` PREDICTION, and why chasing it changed
+      shape.** The alpha report's finding ends: "It also affects the classic RSA
+      path, which shares this transport, for any response served in more than one
+      chunk." Written as a prediction, never verified. **READ, NOT MEASURED - do
+      not treat the following as settled**; it is here so the next attempt starts
+      from the right question.
+
+      The mechanism splits by response size because a response that fits ONE
+      chunk completes inside `send_stored_response()`, which sets
+      `pending_operation = CTAP2_ERR_DATA_WIPE` before returning, so the old gate
+      passed. A partial chunk set nothing, the gate read the clobbered global, and
+      sizing fell to the 72-byte default while the cursor advanced a full 512 -
+      hence 71 bytes per 512 and "one byte in seven".
+
+      **The chunk is 512 bytes** (`MAX_LARGE_RESP_CHUNK`, ok_extension.cpp:116),
+      not a 64-byte HID report - and that is the number the prediction turns on.
+      A classic RSA response is `type * 128`, and `store_FIDO_response()` does
+      not grow it (`large_resp_buffer_offset = len`; the encrypt path is
+      in place):
+
+      | key | response | chunks |
+      |---|---|---|
+      | RSA-1024 | 128 B | 1 |
+      | RSA-2048 | 256 B | 1 |
+      | RSA-3072 | 384 B | 1 |
+      | RSA-4096 | **512 B** | **1** - `chunk_len = remaining > 512 ? 512 : remaining`, so 512 is served whole and the cursor reaches the offset in one pass |
+
+      So on this reading **no classic RSA response can exceed one chunk**, the
+      largest is exactly one full chunk, and the condition the prediction names
+      is unreachable for classic RSA - which would make the sentence vacuous
+      rather than wrong. It also means an RSA-2048 signature is NOT the
+      multi-chunk case; five 64-byte REPORTS is the raw-HID framing that
+      `19-rsa-keys` already drives and where it works.
+
+      **What would settle it, and it has to be driven over the tunnel.** RSA-4096
+      is the case worth the trouble, because 512 bytes is exactly the boundary:
+      an off-by-one anywhere in the cursor or the `>` would split it, and that is
+      the one input where reading the code is least trustworthy. RSA-2048 second,
+      because it is what the pages actually use.
+
+      The transport work that needs, since `lib/device/tunnel.js` does a single
+      assertion and has no poll loop: `u2fSignBuffer()` in `onlykey-pgp.js` sends
+      the request in **228-byte** chunks (`57 * 4`) with `cmd` = OKSIGN/OKDECRYPT,
+      `opt1 = slotid()` (2 to sign, 1 to decrypt - the RSA slots), `opt2` = the
+      final-packet flag and `opt3` = an incrementing packet number, and the
+      payload is **AES-GCM encrypted with the OKCONNECT handshake secret**. So
+      either the kit mirrors that encryption and adds a poll loop, or - cheaper
+      and the precedent `03-xwing-derive` set - the shipped library sends it and
+      the kit checks the answer.
+- [ ] **A section-2 prerequisite that has DISSOLVED, which makes the row below
+      cheaper than PLAN says.** `03-gui/07-pgp-keys` is `device: false` and its
+      header explains why the device-backed half is section 2's: it "needs a
+      composite key loaded into a slot by `onlykey-cli setpqc`, which is not
+      reachable over the browser's WebAuthn transport at all". True for a
+      COMPOSITE key. **Not true for a classic RSA key**, which goes into an RSA
+      slot with OKSETPRIV over the vendor interface - and `19-rsa-keys` does
+      exactly that, from the kit, with no CLI at all. So the classic
+      `startEncryption`/`startDecryption` half needs no section-2 step and can
+      run in section 3's headless tier, or section 1. PLAN's build sheet still
+      says "section 2" for that row and should be corrected when the file lands.
 - [ ] **`18-gui-encrypt-decrypt`** - the classic (non-PQC) PGP pages,
       `/app/encrypt` and `/app/decrypt`, which no kit has driven. Split it the
       way the old one did: of the encrypt page's three modes only **Encrypt
