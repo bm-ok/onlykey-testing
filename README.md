@@ -785,10 +785,12 @@ in-process bus like section 1.
   `/app/encrypt` and `/app/decrypt` as well until 2026-08-06; both are driven in
   nw.js by `03-gui/14-gui-encrypt-decrypt`. Everything under pgp-pqc is proven
   headless, so a failure there means the page.
-- **Section 4's remaining tabs.** Slots, Keys and Backup are driven; the
-  **restore** half of Backup is measured but unsettled (see TODO's premises
-  table), and **Setup, Preferences, Advanced and Tools** are untouched. The
-  **Firmware** tab is deliberately excluded - it reaches `OKFWUPDATE`.
+- **Section 4's remaining tab is SETUP, and only that one.** Slots, Keys,
+  Backup, **Preferences, Advanced and Tools** are all driven as of 2026-08-06 -
+  27 tests. The **restore** half of Backup is measured but unsettled (see TODO's
+  premises table). The **Firmware** tab is deliberately excluded - it reaches
+  `OKFWUPDATE` - and Preferences' full-wipe button is excluded for the same
+  class of reason, with its presence asserted so its absence would be noticed.
 - **The GitHub Actions workflow is written and PARKED**, not missing: it exists,
   it is `workflow_dispatch` only, and it has never run on GitHub. Do not dispatch
   it and do not add triggers - see TODO for why hosted CI is being re-envisioned
