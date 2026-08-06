@@ -1878,7 +1878,19 @@ test something different from what the file is for.
       for two days: an orphaned device host holds no port and no device node, so
       nothing later fails because of it. It just burns a core and holds a
       `flash.bin` mapping. The only symptom is `ps`.
-- [ ] **SIGABRT is classified as "not the firmware's fault", and it is.**
+- [x] **SIGABRT is classified as "not the firmware's fault", and it is.** FIXED
+      2026-08-06, with its oracle in the same change - three cases in
+      `00-sanity/05-exit-classification`: the signal, glibc's own
+      `*** buffer overflow detected ***` line (needed separately, because
+      `okemu_restart.cpp` only handles SIGSEGV so NOTHING of ours prints on an
+      abort), and the deliberate asymmetry that an abort during boot is NOT
+      retried the way a segfault is - a fortify trip is deterministic, so
+      retrying turns one clear failure into three slow ones. Sanity is 56.
+      **The kit had been contradicting its own finding**: FINDING-rsa4096-overflow.md
+      names the abort as the defect's signature while `classifyExit()` reported
+      it as exit 5, "the run produced no verdict".
+
+- [x] ~~**SIGABRT is classified as "not the firmware's fault", and it is.**~~
       `classifyExit()` maps SIGSEGV to a firmware crash (exit 2) but SIGABRT falls
       through to external/OOM (exit 5), which reads as "the run produced no
       verdict". A `_FORTIFY_SOURCE` abort IS a firmware crash and is exactly the

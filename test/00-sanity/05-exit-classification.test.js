@@ -115,6 +115,58 @@ describe('classifying a dead device host', { device: false }, () => {
       'the backtrace was ignored because the signal was missing');
   });
 
+  it('calls a SIGABRT a firmware crash, because _FORTIFY_SOURCE is why it aborted',
+    async ({ assert }) => {
+      /*
+       * The case this file existed without, and the one the kit got backwards.
+       * SIGABRT used to fall through to HOST_DIED - exit 5, "no verdict about
+       * the device" - when it is the clearest verdict there is: the emulator
+       * builds with _FORTIFY_SOURCE so an overflow aborts at the write, which
+       * is how the RSA-4096 defect was found in the first place.
+       */
+      const verdict = classifyExit({
+        code: null, signal: 'SIGABRT', stderr: '', ready: true, generation: 2,
+      });
+      assert.equal(verdict.kind, 'fatal');
+      assert.equal(verdict.fatal, FATAL.FIRMWARE_CRASH,
+        'a fortify abort is the firmware crashing, not the host dying');
+      assert.match(verdict.reason, /aborted/);
+    });
+
+  it('reads glibc\'s own overflow line, not only the signal', async ({ assert }) => {
+      /*
+       * The parallel of the segfault test below it, and it needs its own case
+       * because the two are reported by DIFFERENT writers. The addon prints
+       * "[okemu] FATAL: segfault at" from its own handler; nothing prints
+       * anything for an abort, because okemu_restart.cpp only handles SIGSEGV -
+       * glibc writes the diagnosis and dies. So a run that captured the text
+       * but lost the signal still has to reach the right verdict.
+       */
+      const verdict = classifyExit({
+        code: 134, signal: null, ready: true, generation: 1,
+        stderr: 'Slot =  2\nType =  68\n*** buffer overflow detected ***: terminated\n',
+      });
+      assert.equal(verdict.fatal, FATAL.FIRMWARE_CRASH,
+        'the fortify diagnosis alone should be enough to call it a firmware crash');
+    });
+
+  it('does NOT retry an abort during boot, unlike a segfault', async ({ assert }) => {
+      /*
+       * The deliberate asymmetry, asserted so it does not get "fixed" into
+       * symmetry later. A segfault before the banner is retried because it is
+       * usually the flash mapping losing a race. A fortify abort is a
+       * deterministic memory error - the same input aborts again next boot - so
+       * retrying turns one clear failure into three slow ones.
+       */
+      const verdict = classifyExit({
+        code: null, signal: 'SIGABRT', stderr: '', ready: false, mapRetries: 0,
+        generation: 0,
+      });
+      assert.equal(verdict.kind, 'fatal',
+        'an abort during boot is still a firmware crash, not a flaky start');
+      assert.equal(verdict.fatal, FATAL.FIRMWARE_CRASH);
+    });
+
   it('retries a mapping failure, then gives up naming it', async ({ assert }) => {
     const retry = classifyExit({
       code: EXIT_MAPFAIL, expected: false, ready: false, mapRetries: 0,
