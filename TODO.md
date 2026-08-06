@@ -21,7 +21,7 @@ of the old reasoning.
 | | what | why it is next |
 |---|---|---|
 | 1 | **section 4, the OnlyKey APP** (§5, "Section 4 - the OnlyKey app") | **ASSIGNED, AND DONE - 28 tests green as of 2026-08-06 14:44Z**, up from 15. **Every tab is driven bar the two that must not be**: the session plus Slots, Keys, Backup, Setup, Preferences and Advanced. **The Firmware tab is excluded** because it reaches `OKFWUPDATE` - and note `16-app-setup` records that the SAME DOOR is on the Setup tab (`LoadFirmware` -> Step11), so the exclusion is not confined to the tab it is named after. **Tools is deliberately NOT a test file** - it is a launcher of external links with no device behaviour, so pinning its hrefs was maintenance without a subject; what mattered is [FINDING-app-tools-origin.md](FINDING-app-tools-origin.md). **What is left is ONE tab: Setup** (`init-panel`), plus the **restore half** of Backup (measured, unsettled - see the premises table). **The Firmware tab is deliberately excluded**, because it reaches `OKFWUPDATE`, and Preferences' `fullWipeModeBtn` is excluded for the same class of reason - both have their PRESENCE asserted so that an absence would be noticed without either being armed. Two findings came out of the new tabs: the Yubico form discards a hex Public ID in total silence (`hexToModhex` throws inside the click handler and nothing catches it), and the Tools tab's four `/app/*` links point at an origin the firmware does not stage. **Advanced also closed a real coverage gap nothing else could reach** - `set_slot()` case 10 (`YUBIAUTH`), one of only two cases with no coverage anywhere, since `onlykey-cli` exposes no route to it |
-| 2 | HMAC challenge-response (§2, "Section 1 - the protocol surface") | NOT "HMAC settings" - that half is already done by `11-cli-settings`. **THE IPC VERBS ARE BUILT AS OF 2026-08-06, so this IS a test-writing job now** - this row said the opposite until then and a reader would have taken it at face value. `emulator/lib/protocol.js` and `ipc-peer.js` carry `kbdSetReport`/`kbdGetReport`, and `device.kbdSetReport()`/`device.kbdGetReport()` are on the Device API, verified round-tripping 8 bytes from a booted device (emulator `66e4e52`, kit `97ad1bf`). **What is left is the test itself**, and the firmware facts it needs are below - including a slot-selector correction that was made WRONG once and then corrected again, so read the branch table rather than remembering a pair of values. The hardware adapter throws for both verbs by design, so the file must gate `emulated` out loud the way `16-app-setup` does |
+| 2 | HMAC challenge-response (§2, "Section 1 - the protocol surface") | **IN PROGRESS, PARKED IN [wip/24-hmac-sha1-challenge.test.js](wip/24-hmac-sha1-challenge.test.js)** which the runner does not glob. The IPC verbs are BUILT (emulator `66e4e52`, kit `97ad1bf`) and the write half is PROVEN - the 10-frame SET_REPORT sequence, the CRC, the 16+4 key split and the device storing the key are all verified. **The challenge half is not**: the frame is accepted but `okcrypto_hmacsha1()` never announces itself. Next step is named in the file's header. Four protocol traps are recorded there and each cost a run - read it before starting, do not re-derive |
 | 3 | `13-pgp-pqc` (§4, "Section 3 - the pages that are left") | the only page left, and the one item here that needs a browser in front of a human. Page debugging, not coverage |
 | — | **section 5, SECURITY** (§6) | PLANNED, after the sweep, by decision. Its two harness prerequisites - a recorded crash rather than an aborted run, and a positive control for every negative assertion - land BEFORE any test in it |
 | — | the International Travel Edition (§3) | DEFERRED until the kit is complete, by decision - a second BUILD, diffed against this one |
@@ -689,9 +689,27 @@ And the two carried-over rows that came over only partly:
         `okcrypto_hmacsha1()` inline; otherwise it sets `CRYPTO_AUTH = 3` and
         `packet_buffer_details[0] = OKHMAC` and waits. **Both paths are worth
         driving** and neither ever has been.
-      - **`check_crc(keyboard_buffer)` gates the write branch** and is `extern`,
-        defined outside okcore.cpp. A test that writes a key has to mirror it;
-        one that only challenges may not need to. Not yet read - **UNVERIFIED**.
+      - **`check_crc()` is CRC-16/MCRF4XX over bytes 0..63 ONLY**, little-endian
+        at `[65..66]`. The slot selector at `[64]` is NOT covered by it.
+      - **The 70-byte buffer is filled seven bytes per SET_REPORT**, marker
+        `0x80..0x89` in byte 7 - and **the copy happens inside GET_REPORT**, so
+        every frame must be followed by one or nothing lands.
+      - **The last frame only QUEUES the work.** `setBuffer[8] = 1` is consumed
+        by `OnlyKey.ino:477`, gated on `!isfade || configmode` - so an unlock's
+        LED fade delays it. Measured 2504ms. Sending a second buffer before the
+        first is consumed overwrites `keyboard_buffer`.
+      - **Do NOT poll GET_REPORT to detect that consumption.** After the last
+        frame `setBuffer[7]` is still `0x89`, so each extra GET_REPORT re-enters
+        the hand-off branch and rewrites `getBuffer[7]` - the poll destroys the
+        `0xaf` it is waiting for. Measured: it returns 0x00 forever.
+      - **Acknowledgement strings are NOT on the console as text.**
+        `byteprint()` renders "Successfully set ECC Key" as
+        `53 75 63 63 ...`, so a regex for the readable string never matches and
+        times out looking like a device that did not answer. "Sending transport
+        response data" is plain text and works.
+      - The answer is FOUR GET_REPORTs, `getBuffer[8]` walking `0x40..0x43`,
+        with the 20-byte HMAC split across `kb[0..6]`, `[8..14]`, `[16..21]`,
+        CRC-16/X-25 at `[22]`/`[24]` and a constant `0x4B` at `[28]`.
       - Challenge length is inferred, not declared: all-`0x20` in bytes 57..63
         means 32 (KeePassXC's empty buffer), otherwise it scans back from 63 for
         the last non-zero and never goes below 16. **Any challenge under 16 bytes
