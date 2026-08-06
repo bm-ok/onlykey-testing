@@ -1,5 +1,16 @@
 # The composite PQC keys use private-range algorithm IDs, so nothing else can read them
 
+> **RESOLVED 2026-08-06, and it was bigger than the title says.** The codepoints
+> were the first of **three** divergences from draft-ietf-openpgp-pqc-10; fixing
+> them let rpgp parse our keys and verify our signatures, and then exposed the
+> other two by failing decryption with "Key Data Integrity failed". The ECC key
+> share was being hashed when it should be the raw X25519 shared secret, and the
+> key combiner was KMAC256 over the wrong inputs instead of draft-10's SHA3-256.
+> All three are fixed: `onlykey.github.io@ef41bec`, `python-onlykey@4875e24`,
+> `lib-agent@d3f894e`. **All four interop directions with rpgp 0.20 now pass.**
+> The measurements below are kept as they were taken - which prediction held and
+> which was incomplete is itself the result. See "Resolution" at the end.
+
 **Component:** the vendored PQC openpgp.js fork — `onlykey.github.io`
 (`src/onlykey-fido2/onlykey/vendor/openpgp/openpgp.js`) and the byte-identical
 copy in `python-onlykey/onlykey/openpgp_bridge/openpgp.js`.
@@ -124,3 +135,71 @@ It also does not say rpgp would accept the result today — that has not been
 measured, because it cannot be until the codepoints change. What has been
 measured is that rpgp implements the same draft and rejects our key for exactly
 this reason and no other.
+
+---
+
+## Resolution (2026-08-06)
+
+**The last sentence above was wrong, and usefully so.** "Rejects our key for
+exactly this reason and no other" was an inference from a single failure mode,
+and the moment the codepoints changed the next layer disagreed too. Kept rather
+than edited, because the lesson generalises: *one confirmed divergence is not
+evidence that there is only one.*
+
+### What was actually wrong — three things, not one
+
+| | our fork (earlier draft revision) | draft-10 / rpgp |
+|---|---|---|
+| codepoints | 105 / 107 | **30 / 35** |
+| ECC key share | `SHA3-256(ss ‖ ct ‖ recipientPub)` | **raw X25519 shared secret** |
+| key combiner | `KMAC256(mlkemKS‖eccKS, mlkemCT‖eccCT‖mlkemPK‖eccPK‖algId, pers=domSep)` | **`SHA3-256(mlkemKS‖eccKS‖eccCT‖eccPK‖algId‖domSep‖len(domSep))`** |
+
+The second and third only became visible *after* the first was fixed — before
+that, rpgp could not get far enough into the key to disagree about anything else.
+
+### How it was found, in order
+
+1. Codepoints corrected → rpgp parses the key (`MlDsa65Ed25519` / `MlKem768X25519`,
+   both V6) and **verifies our composite signatures**. Signatures were already
+   conformant; only the tag was wrong.
+2. Encryption still failed — `Key Data Integrity failed`, i.e. the AES key unwrap,
+   i.e. the two sides derived different KEKs.
+3. Patching only the combiner did **not** fix it, which is what proved the ECC
+   key share was independently wrong rather than a second symptom of the same
+   cause. That patch was reverted before the real fix went in.
+
+### Acceptance, measured
+
+All four directions against rpgp 0.20 (Rust/RustCrypto, `draft-pqc`), an
+implementation that has never seen this code:
+
+| direction | result |
+|---|---|
+| rpgp parses our key | `RESULT parse=ok` |
+| openpgp.js encrypts → rpgp decrypts | `RESULT decrypt=ok` |
+| rpgp encrypts → openpgp.js decrypts | `RESULT decrypt=ok` |
+| openpgp.js signs → rpgp verifies | `RESULT verify=ok` |
+
+Control: a key generated minutes earlier under 105/107 still fails to parse.
+
+### What did not change
+
+**The device.** The firmware stores four raw seeds and returns raw ML-KEM and
+X25519 shared secrets; it never sees an OpenPGP algorithm ID, and every hash and
+combine is host-side. `hooks.ecdh` fires inside `recomputeSharedSecret()`, one
+level below the key-share layer, so the device contract is untouched by
+construction.
+
+That was an assumption, so it was measured both ways: the composite kit suites
+pass **19/19 against the codepoint-only tree** (run deliberately before the KEM
+changes, so the two could be told apart) and **30/30 against the final tree**.
+
+### Still open
+
+GnuPG interop, and it is a product question rather than a defect. GnuPG 2.5.21
+is on the LibrePGP track — v5 keys, its own Kyber codepoint 8, no ML-DSA at all —
+and cannot parse a v6 key packet whatever the codepoints say. rpgp is the
+realistic interop target for this design.
+
+The harness lives at `onlykey/pqc-rust/interop/` and is the thing to re-run when
+the draft moves again. It will.

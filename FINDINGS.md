@@ -21,10 +21,14 @@ their `where` column says so rather than staying blank - a fix sitting in a
 local fork has told the maintainer exactly as much as no fix at all. When the PR
 goes up, put its number in `issue`.
 
-**#8 is the one to read first if you only read one.** It is the only finding
-here that gets harder to fix the longer it waits: the algorithm ID is an input
-to the composite key derivation, so keys made before and after a correction
-cannot read each other. Everything else on this list can be fixed at any time.
+**#8 is the one to read first if you only read one**, now that it is fixed as
+much as for what it was. It was the only finding here that got harder to fix the
+longer it waited — every part of it is bound into the composite key derivation,
+so keys made before and after cannot read each other — and it is also the one
+that grew under investigation: it began as "two constants are wrong" and ended as
+three independent divergences from draft-ietf-openpgp-pqc-10, the second and
+third only visible once the first was corrected. **One confirmed divergence is
+not evidence that there is only one.**
 
 **Severity is not a ranking of how alarming something sounds.** Two of these
 (#2, #7) are bounded by REACHABILITY rather than by what they would do, and #7
@@ -41,7 +45,7 @@ one to read before deciding what to do about it.
 | 5 | [The Yubico Public ID field discards a wrong-format value in silence](FINDING-app-yubico-silent-discard.md) | OnlyKey-App | low - usability | **no** | — | — |
 | 6 | [The Tools tab links to an origin the firmware does not stage](FINDING-app-tools-origin.md) | OnlyKey-App | depends on one hosting fact - see the write-up | **no** | — | — |
 | 7 | [Writing an HMAC key silently removes that slot's button-press requirement](FINDING-hmac-press-free-on-write.md) | firmware (`libraries/onlykey`) | low-moderate; DELIBERATE behaviour, silent side effect. Bounded by needing an unlocked device | **no** | — | — |
-| 8 | [Composite PQC keys carry private-range algorithm IDs 105/107, not IANA's 30/35](FINDING-pqc-private-algorithm-ids.md) | vendored openpgp.js fork (`onlykey.github.io` + `python-onlykey`) | **interoperability, and unfixable after release** - the ID is bound into the KMAC combine, so changing it later invalidates every key and message made before | **no** | — | — |
+| 8 | [Composite PQC was three revisions behind the draft: private-range algorithm IDs, a hashed ECC key share, and a KMAC combiner](FINDING-pqc-private-algorithm-ids.md) | vendored openpgp.js fork (`onlykey.github.io` + `python-onlykey`) + `lib-agent` mirror | **interoperability, and was unfixable after release** - all three are bound into the derived KEK | **no** | **fixed** in the `bm-ok` forks (`onlykey.github.io@ef41bec`, `python-onlykey@4875e24`, `lib-agent@d3f894e`), PR pending. All four rpgp interop directions now pass | — |
 | 9 | `pqc.sign()`/`pqc.decrypt()` could not return their own output | python-onlykey | binary output impossible: `read_string()` drops every zero byte, and `read_bytes()` underneath is ONE 64-byte report with no reassembly, so a 3309-byte ML-DSA signature could never be returned at all | **no** | fixed in `bm-ok` fork, PR pending | — |
 | 10 | `setpqc` reported success for a load the device refused | python-onlykey | a client cannot detect it - there is no readback for a composite slot | **no** | fixed in `bm-ok` fork, PR pending; `02-cli/12-cli-slots` flipped from pinning the defect to asserting the refusal | — |
 | 11 | `libagent/device/onlykey_pqc.py` is dead code - imported by nothing | lib-agent | the composite PQC path is unreachable from `onlykey-agent`/`onlykey-gpg`; 134 lines that look like a shipped feature | **no** | — | — |
