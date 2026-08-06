@@ -665,10 +665,20 @@ And the two carried-over rows that came over only partly:
         `< 5` or 101..116 - the HMAC key slots are 129 and 130, so neither range
         applies.
       - The key is **20 bytes** (`Sha1.initHmac(ecc_private_key, 20)`), and the
-        slot selector is `keyboard_buffer[64]`: `0x30` and `0x38` pick
-        `RESERVED_KEY_HMACSHA1_1` / `_2` (ECC slots 130 and 129 - note the
-        source's own comments have those two the wrong way round), and 1..24
-        reads a per-slot HMAC key instead.
+        slot selector is `keyboard_buffer[64]` - but **THE VALUES RECORDED HERE
+        WERE WRONG, corrected 2026-08-06 by reading `okcore.cpp:7681`**:
+
+        ```c
+        if (keyboard_buffer[64] == 1)      recv_buffer[5] = RESERVED_KEY_HMACSHA1_1;
+        else if (keyboard_buffer[64] == 3) recv_buffer[5] = RESERVED_KEY_HMACSHA1_2;
+        ```
+
+        The selectors are **1 and 3**, not `0x30` and `0x38`. The dispatch
+        condition above them is `keyboard_buffer[64] == 1 || (>= 3 && <= 27)`,
+        so 3..27 is the per-slot range rather than 1..24. `0x60`/`0x40` are real
+        but belong to a DIFFERENT byte - `keyboard_buffer[46]`, which selects
+        "set HMAC key using Yklib". Anything built on the old values would have
+        addressed the wrong slot and been debugged as a firmware fault.
       - Challenge length is inferred, not declared: all-`0x20` in bytes 57..63
         means 32 (KeePassXC's empty buffer), otherwise it scans back from 63 for
         the last non-zero and never goes below 16. **Any challenge under 16 bytes
