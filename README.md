@@ -9,9 +9,11 @@ how to use what was built. What is left to build is [TODO.md](TODO.md), in the
 order to do it; [PLAN.md](PLAN.md) is why each of those items exists.
 
 **[FINDINGS.md](FINDINGS.md) is every defect this kit has found, and whether
-anybody has been told.** Six write-ups, none of them reported yet - which the
-table says out loud, because a repo full of careful findings and no reporting
-status reads exactly like a repo whose findings were all filed.
+anybody has been told.** None of them reported yet - which the table says out
+loud, because a repo full of careful findings and no reporting status reads
+exactly like a repo whose findings were all filed. (No count here on purpose:
+this line said "six" for about six hours, and FINDINGS.md itself dropped its
+count for the same reason.)
 
 ## Quick start
 
