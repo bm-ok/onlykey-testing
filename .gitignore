@@ -8,3 +8,7 @@ runs/
 
 # a stray GnuPG homedir, from an onlykey-gpg run whose --homedir was a JS null
 null/
+
+# Authoring captures are throwaway - see README, "Seeing what a page is
+# actually showing". No committed test may depend on one.
+wip/*.png
