@@ -515,10 +515,16 @@ Four limits of snapshot restore, none of them bugs:
 ```
 test/00-sanity/     built    no device at all - the kit's own oracles
 test/01-protocol/   built    Node over the wire protocols
-test/02-cli/        stub     the CLI through the Python venv
-test/03-gui/        stub     the web app through nw.js
+test/02-cli/        built    the CLI through the Python venv
+test/03-gui/        built    the web app: 00-09 headless, 10+ in nw.js
 test/04-app/        stub     the OnlyKey app, in its own nw.js
 ```
+
+**Only section 4 is still a stub, and this block said otherwise until
+2026-08-05** - it was written when sections 2 and 3 were empty and nothing
+updated it as they filled, which is the failure PLAN's dated counts table exists
+to prevent. Sections 2 and 3 carry 101 and 78 passing tests; PLAN has the numbers
+and when each was measured.
 
 The sanity section runs first and declares `device: false`, so the runner never
 starts a device host for it: it checks the kit's own pure-JS oracles - CBOR, the
@@ -530,15 +536,23 @@ The admission test for section 1 is not "is this protocol-level" but **"does
 this reach the device without a kernel device node"**. Sections 2-4 are not
 merely deferred on a hosted runner - they are permanently impossible there.
 There is no `/dev/hidraw`, so python-onlykey, lib-agent and node-hid have
-nothing to open, and no display, so nothing that needs a browser runs. Their
-stubs say so, with a reason, every run.
+nothing to open, and no display, so nothing that needs a browser runs. Those
+files skip themselves with the reason named, every run - section 3's headless
+tier is the exception and runs there, because it reaches the device over the
+in-process bus like section 1.
 
 ## Not built yet
 
 - **The hardware adapter** is a declared seam with a stub behind it
   (`lib/device/hardware.js`), which documents what it has to do and why the
   emulated path is shaped the way it is.
-- **The GitHub Actions workflow.** On a hosted runner it comes down to
+- **Section 3's browser tier for the PGP pages.** `/app/encrypt`, `/app/decrypt`
+  and `/app/pgp-pqc` are the pages nothing drives in nw.js. Everything under all
+  three is proven headless, so a failure there means the page.
+- **The GitHub Actions workflow is written and PARKED**, not missing: it exists,
+  it is `workflow_dispatch` only, and it has never run on GitHub. Do not dispatch
+  it and do not add triggers - see TODO for why hosted CI is being re-envisioned
+  around a self-hosted runner. On a hosted runner it comes down to
   `sudo sysctl -w vm.mmap_min_addr=4096`, three source checkouts, building the
   addon, asserting the rung, and running section 1.
 ### Challenge modes, and how to use a stored key without three presses

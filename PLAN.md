@@ -18,8 +18,17 @@ wearing the present tense - and the two adapters drift apart at different rates.
 | sanity | 50 passed, 0 failed | 2026-08-05 17:35Z | 50 passed, 0 failed | 2026-08-05 16:12Z |
 | section 1 | 112 passed, 0 failed, 1 skipped | 2026-08-05 21:02Z | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
 | section 2 | 101 passed, 0 failed (gadget) | 2026-08-05 17:35Z | skipped - `client-access` | n/a |
-| section 3 | 72 passed, 0 failed (headless 50 + browser 22) | 2026-08-05 17:35Z | n/a - both tiers drive the emulator by design | n/a |
-| **whole tree** | **335 passed, 0 failed, 2 skipped** | 2026-08-05 21:02Z | **118 passed, 9 skipped-with-reason** | 2026-08-05 16:24Z |
+| section 3 | 78 passed, 0 failed (headless 56 + browser 22) | 2026-08-05 22:00Z | n/a - both tiers drive the emulator by design | n/a |
+| **whole tree** | **341 by arithmetic - it no longer FITS in one run**, see below | 2026-08-05 22:25Z (aborted) | **118 passed, 9 skipped-with-reason** | 2026-08-05 16:24Z |
+
+**THE WHOLE TREE NO LONGER COMPLETES, and that is new as of 2026-08-05.** The
+17:35Z sweep took 879s against a `RUN_MAX` of 900s - twenty-one seconds of
+headroom, which nobody had noticed was the margin. `03-gui/08-pgp-encrypt-decrypt`
+costs 135s, so the 22:25Z attempt was cut off by the run-level watchdog at 903s
+with **225 passed, 0 failed** and section 2 unfinished. Nothing failed; the run
+ran out of budget. Until that is settled (TODO has the row) the honest way to
+measure this tree is **section by section**, which is where every number in the
+rows above comes from, and the total is their sum rather than a run of its own.
 
 **Section 1's 112 is the 17:35Z sweep's 96 plus five new files measured on their
 own** - `19-rsa-keys` 7, `20-second-profile` 3, `21-self-destruct` 2,
@@ -43,7 +52,8 @@ All three are the gates working rather than gaps.
 fixed. The useful part is the correlation: every file written since `--reverse`
 became a gate passes it, and every failure predates the rule.
 
-**Both columns were single sweeps as of 17:35Z**, which they had not been before:
+**Both columns were single sweeps as of 17:35Z**, which they had not been before
+and which the emulated one no longer is - see the run-max row above:
 
 - **Emulated**: `okt run` with no target, one process, all four sections in
   order. 319 passed, 0 failed, 1 skipped, 879s, run `20260805-172107-935299`.
@@ -57,14 +67,19 @@ became a gate passes it, and every failure predates the rule.
 Until this run the emulated column was per-file arithmetic, summed as each file
 landed rather than produced by any single run. It agreed exactly, which is
 reassuring rather than redundant: a per-file total can hide a file that only
-passes when it runs alone, and this one does not.
+passes when it runs alone, and this one does not. **That agreement is what makes
+losing the whole-tree run survivable** - the per-section totals are known to sum
+correctly, so the arithmetic is checked rather than merely assumed. It is still
+worth restoring, because it is the only measurement that catches a file which
+only passes when its neighbours do not run.
 
 Section 3 remains the most drift-exposed section - its browser tier depends on
 nw.js and the onlykey.github.io checkout rather than on anything this repo pins -
 so it is still the one to re-measure when either of those moves. Note it must run
 as a SECTION, never file by file: `10-session` starts nw.js and the express
 server, `19-stop` stops them, and the session is held across files by the module
-cache.
+cache. Its 78 IS a section sweep, run 22:00Z after `08-pgp-encrypt-decrypt`
+landed, rather than 72 plus arithmetic.
 
 Run directories under `runs/` carry the authoritative record - each has a
 `status.json` with `startedAt`, `finishedAt` and the counts, and `run.log`'s
@@ -213,6 +228,7 @@ the second fails the page is at fault rather than the device.
 | feature | page | old kit, Node | old kit, nw.js | `00-09` headless | `10+` GUI |
 |---|---|---|---|---|---|
 | `connect` | all of them | - | - | ✅ `00-fido2-lib` | - |
+| the `_$mode()` matrix - Encrypt Only, Sign Only, Encrypt and Sign, Decrypt Only, Decrypt and Verify | encrypt, decrypt | - | `18` | ✅ `08-pgp-encrypt-decrypt` - all five driven | ☐ |
 | X-Wing maths (`age_pqc.js`) | age-derive | - | `15` | ✅ `01-age-pqc-parity` | ☐ |
 | `derive_public_key` / `derive_shared_secret` | password-generator, vault | - | `14` | ✅ `02-derive` | ✅ `11-password-generator` |
 | `derive_xwing_recipient` / `derive_xwing_decap` | age-derive | - | `15` | ✅ `03-xwing-derive` | ✅ `12-age-derive` |
@@ -220,7 +236,7 @@ the second fails the page is at fault rather than the device.
 | loading a composite key | pgp-pqc | `17-nodejs` | - | ✅ `02-cli/05-composite-load` | - |
 | `composite_sign` / `composite_decrypt` | pgp-pqc | `17-nodejs` | `17-nwjs` | ✅ `02-cli/06-composite-ops` - both halves of both operations, and TC-11's whole round trip | ☐ |
 | key selection (`onlykey-pgp.js`) | encrypt, decrypt | - | - | ✅ `07-pgp-keys` | - |
-| `startEncryption` / `startDecryption` | encrypt, decrypt | `18`'s `pgp_env` half | `18` | ☐ **section 3, not section 2** | ☐ |
+| `startEncryption` / `startDecryption` | encrypt, decrypt | `18`'s `pgp_env` half | `18` | ✅ `08-pgp-encrypt-decrypt` - **section 3, not section 2**, and measured rather than argued | ☐ |
 | age file format (`age_file.js`) | age-derive | - | - | ✅ `04-age-file` | ✅ via `12-age-derive` |
 | vendored openpgp fork (`openpgp_loader.js`) | pgp-pqc | `17-nodejs`'s `openpgp_node` | - | ✅ used by `06` | - |
 | composite blobs (`composite_pgp.js`) | pgp-pqc | `17-nodejs` | - | ✅ `05-composite-blob` | - |
@@ -238,6 +254,20 @@ against it through the tunnel. So the classic pages carry no section-2
 prerequisite and their headless tier belongs in section 3 with the rest of the
 library work. The PQC page keeps its section-2 prerequisite, because a composite
 key genuinely does need `setpqc`.
+
+**That correction is now a file rather than an argument.**
+`03-gui/08-pgp-encrypt-decrypt` loads both hardcoded RSA slots itself over the
+vendor interface and drives all five modes, with no CLI involved anywhere. The
+shape worth keeping is that **one PGP key fills both slots**: `slotid()` sends
+OKSIGN to slot 2 and everything else to slot 1, and a PGP key is a primary that
+signs plus a subkey that encrypts, so the primary's P‖Q goes to 2 and the
+subkey's to 1. Generating that key with openpgp.js is also what makes the oracle
+independent - the device is given only the factors, so the library's output is
+checked by a library that has never spoken to it. Two client-side findings came
+out of it and are in TODO's premises table; the shortest is that
+`startEncryption`'s two argument guards test `.value` on strings the pages have
+already dereferenced, so **neither guard can fire and an empty input hangs the
+call** instead of reporting itself.
 
 **`vault` and `chat` are placeholders**, per the maintainer - future features,
 not shipped ones, so their absence from the sheet above is deliberate rather
@@ -310,7 +340,7 @@ a section that does not exist yet.
 | ✅ | `14-gui-password-generator` | gui | `03-gui/11-password-generator` | the page's secret cross-checked against the kit's own derivation - two clients, two transports, one device |
 | ✅ | `15-gui-age-derive` (TC-18/19) | gui | `03-gui/12-age-derive` | encrypt and decrypt in the browser, and the file it sealed opened by the kit |
 | ☐ | `17-nwjs-composite-pgp` (TC-11) | gui | — | **stage 6** |
-| ☐ | `18-gui-encrypt-decrypt` | gui | — | drives `localhost:3000/app/encrypt` |
+| ⚠️ | `18-gui-encrypt-decrypt` | gui | `03-gui/08-pgp-encrypt-decrypt` | **the library half is carried over and then some** - all five `_$mode()` modes, checked against openpgp.js rather than against the page's own output. The BROWSER half, `localhost:3000/app/encrypt`, is what is left |
 
 Sections are the kit's own: **sanity** (`test/00-sanity`, no device at all -
 the kit's own oracles against known answers), **protocol** (`test/01-protocol`,
@@ -323,9 +353,11 @@ desktop app).
 section 4 is the one part of this kit with no ancestor at all — which is also
 why it is last.
 
-**12 of 19 carried over, 1 of those partially** - `08-backup-hmac`, whose backup
+**13 of 19 carried over, 2 of those partially** - `08-backup-hmac`, whose backup
 half is more than carried over and whose HMAC settings half is not covered at
-all. `12-non-pqc-regression` was the other partial and is now whole.
+all, and `18-gui-encrypt-decrypt`, whose library half landed as
+`03-gui/08-pgp-encrypt-decrypt` and whose browser half has not.
+`12-non-pqc-regression` was the third partial and is now whole.
 
 The sections were checked against what each file actually EXECUTES, not what its
 name suggests, and that moved five rows. The whole PQC cluster - `01`, `02`,
@@ -341,7 +373,7 @@ What that leaves is lopsided, and worth knowing before picking anything up:
 | sanity | 0 | done |
 | protocol | 1 (partial) | nothing - it is `08-backup-hmac`'s HMAC settings half, which is a test to write |
 | cli | 0 | done - every carried-over row has a replacement |
-| gui | 2 | a display, which now exists - `vault`/`chat` are placeholders, not gaps |
+| gui | 2 (1 partial) | a display, which now exists - `vault`/`chat` are placeholders, not gaps. `18-gui-encrypt-decrypt`'s library half is done; only its page is open |
 
 So "get all the tests over" is mostly a CLI problem, not a protocol one. Stage 3
 is done and the section runs; the four rows left there are tests to write rather
@@ -827,11 +859,20 @@ slot fields are worse — two of twenty-eight.
       blob checked against the PUBLIC key beside it rather than against itself
 - [x] `07-pgp-keys`: the PGP layer's key selection - primary signs, subkey
       encrypts, and which key a message names
-- [x] **The headless tier is complete.** Everything in the library that can be
-      reached without a kernel HID node is now covered; what is left needs a
-      composite key loaded by `onlykey-cli setpqc`, and `OKSETPRIV` is not
-      reachable over the browser's WebAuthn transport at all, so it is section
-      2's by construction rather than by omission
+- [x] `08-pgp-encrypt-decrypt`: `startEncryption` / `startDecryption`, all five
+      of `_$mode()`'s modes, against a classic RSA key the file loads into the two
+      slots `slotid()` hardcodes. The key comes from openpgp.js and the device
+      gets only its factors, so the library's output is judged by an
+      implementation that has never spoken to the device - a signature it verifies
+      is one a correspondent would verify. Two client findings, in TODO
+- [x] ~~**The headless tier is complete.**~~ **It was not**, and this row said it
+      was until 2026-08-05. The claim was that everything reachable without a HID
+      node was covered and that what remained needed `onlykey-cli setpqc` - true
+      of the PQC page and **false of the classic pages**, whose key goes in over
+      the vendor interface. `08-pgp-encrypt-decrypt` is what was missing, and the
+      way the gap hid is worth more than the gap: a row that names its blocker
+      correctly for ONE case reads as covering every case beside it. The tier is
+      complete now, with `startEncryption`/`startDecryption` the last thing in it
 - [ ] **In section 2, not here:** read a file written by the real `age` binary
       with `age_file.js`. That needs the plugin, and decrypting one needs a
       device, so it belongs beside `03-pqc-decrypt`
@@ -929,12 +970,14 @@ slot fields are worse — two of twenty-eight.
 
 - [ ] The pages that are left: encrypt, decrypt, pgp-pqc. `vault` and `chat` are
       placeholders and are not on the list. Every feature these three call is
-      already proven at the library level, so a failure there means the PAGE -
-      which is the whole reason the tiers are split. Unlike the two pages
-      already done they are NOT self-contained: both PGP pages need a key the
-      device actually holds, and loading a composite one needs
-      `onlykey-cli setpqc`, because `OKSETPRIV` is not reachable over the
-      browser transport at all. So they carry a section-2 prerequisite
+      already proven at the library level - encrypt and decrypt as of
+      `08-pgp-encrypt-decrypt` - so a failure there means the PAGE, which is the
+      whole reason the tiers are split. Unlike the two pages already done they are
+      NOT self-contained: all three need a key the device actually holds. **Only
+      pgp-pqc carries the section-2 prerequisite**, because loading a COMPOSITE
+      key needs `onlykey-cli setpqc` and `OKSETPRIV` is not reachable over the
+      browser transport. The classic pages' key goes in over the vendor
+      interface, which the kit does itself
 - [ ] **`localhost`, never `127.0.0.1`.** WebAuthn refuses an IP address as an
       rpId, so a page served from `127.0.0.1` dies with "SecurityError: This is
       an invalid domain" before the device is contacted - and the pages swallow

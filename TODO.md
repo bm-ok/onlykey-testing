@@ -23,9 +23,9 @@ implies:
 
 | | what | why it is next |
 |---|---|---|
-| 1 | **`18-gui-encrypt-decrypt`, the classic non-PQC PGP pages (§4)** | **NOT blocked, and not waiting on a human** - every prerequisite came off this table on 2026-08-05. Start with the HEADLESS tier, which needs no display at all |
-| 2 | `loadpqc` / `loadkey` accepting paths (§1) | the last section-2 row; a wiring job, the pieces exist |
-| 3 | HMAC challenge-response (§2) | NOT "HMAC settings" - that half is already done by `11-cli-settings`. This is the Yubikey-style feature the old kit could not reach, and it needs two IPC verbs first |
+| 1 | `loadpqc` / `loadkey` accepting paths (§1) | the last section-2 row; a wiring job, the pieces exist |
+| 2 | HMAC challenge-response (§2) | NOT "HMAC settings" - that half is already done by `11-cli-settings`. This is the Yubikey-style feature the old kit could not reach, and it needs two IPC verbs first |
+| 3 | **`18-gui-encrypt-decrypt`'s BROWSER tier (§4)** | its library tier landed 2026-08-05 as `03-gui/08-pgp-encrypt-decrypt`, so a failure in nw.js now means the PAGE. Automatable the way `11-password-generator` and `12-age-derive` are - it needs a display, not a human |
 | 4 | `13-pgp-pqc` (§4) | **this** is the one that needs a browser in front of a human. Page debugging, not coverage |
 | 5 | section 4, the app (§5) | no ancestor anywhere; genuinely last |
 | — | the International Travel Edition (§3) | DEFERRED until the kit is complete, by decision - a second BUILD, diffed against this one |
@@ -33,8 +33,9 @@ implies:
 **The two remaining pages used to share one row and must not**, because they are
 blocked on completely different things and merging them made the unblocked one
 look blocked. `13-pgp-pqc` needs a browser and a human. `18-gui-encrypt-decrypt`
-needs neither for its first half: the library tier runs headless, and the three
-things that used to stop it are all gone -
+needed neither for its first half, and **that half is now done** -
+`03-gui/08-pgp-encrypt-decrypt`, 6 tests in 135s, `--isolate` 6/6 and `--reverse`
+green. The three things that used to stop it were all gone, and they held up:
 
 1. **A classic RSA key in RSA slots 1 and 2**, which `onlykey-pgp.js`'s `slotid()`
    hardcodes (2 to sign, 1 to decrypt). Loaded and asserted about by
@@ -45,7 +46,9 @@ things that used to stop it are all gone -
 3. **The section-2 prerequisite, which dissolved.** It came from `07-pgp-keys`'
    note that a key must be loaded by `onlykey-cli setpqc` - true for a COMPOSITE
    key, false for classic RSA, which goes in over the vendor interface with no CLI
-   anywhere. PLAN's build sheet is corrected.
+   anywhere. **Now measured rather than argued**: `08-pgp-encrypt-decrypt` loads
+   both slots itself and drives all five modes with no CLI on the machine's mind
+   at all. PLAN's build sheet is corrected.
 
 **Five files landed on 2026-08-05**, clearing four rows off the top of this table:
 
@@ -69,6 +72,13 @@ So **both PINs this kit provisioned on every run and had never entered are now
 entered**, §3's remaining row is a deferred second BUILD rather than a test, and
 three findings are written up for upstream - the two above plus
 [FINDING-cli-exit-codes.md](FINDING-cli-exit-codes.md).
+
+**And a sixth file landed the same evening**, off the top of the table above:
+`03-gui/08-pgp-encrypt-decrypt`, 6 tests in 135s, both gates green. It drives
+`startEncryption` and `startDecryption` through all five of `_$mode()`'s modes -
+Encrypt Only, Sign Only, Encrypt and Sign, Decrypt Only, Decrypt and Verify - so
+the encrypt and decrypt pages now have a library tier under them and a failure in
+nw.js means the PAGE. See §4, and the premises it settled in the table below.
 
 **When a file lands, update its section's `last run` in [PLAN.md](PLAN.md)'s
 counts table.** The emulated and hardware columns carry separate dates because
@@ -359,6 +369,23 @@ Checked while writing `19-rsa-keys`, all in `libraries/onlykey`:
 | the second profile cannot see profile 1's slot data | **FALSE** - both profiles unwrap the same stored master profile key, so an AES-GCM decrypt succeeds across the boundary and the firmware prints the plaintext doing it. Deliberate ("Using new method, PIN changes supported"), and NOT a failed boundary: plausible deniability is the travel BUILD's property, not the second profile's. Pinned by `20-second-profile` |
 | `NONENCRYPTEDPROFILE` is a runtime mode of the second profile | **NO, it is primarily a BUILD** - the `#else` of `#ifdef STD_VERSION` in `setup()` (OnlyKey.ino:259-263), the International Travel Edition, which exists because some countries do not permit encrypted devices. A legal constraint, not a security feature. Everything this kit has assumes `STD_VERSION`; see README |
 | "RSA is the one key type of six with no coverage" | **LOOSE, and this file's own opening said it.** `okcore.h`'s `KEYTYPE_*` values are 1..6 and **all six are ECC** - ed25519, P256, secp256k1, curve25519, ML-KEM-768, X-Wing - and all six were already covered by `14-stored-keys`. RSA is a **seventh key kind outside that enum**, with its own EEPROM accessor (`okeeprom_eeget_rsakey` rather than `..._ecckey`), its own flash sector, and a "type" that means modulus size rather than algorithm. The gap was real; the arithmetic describing it was not |
+
+Checked while writing `03-gui/08-pgp-encrypt-decrypt`, all in
+`onlykey.github.io/src/onlykey-fido2`. **These are about the shipped web client,
+not the firmware** - the first client-side entries this table has carried, and
+they belong here for the same reason: each was a claim something else rested on.
+
+| claim | status |
+|---|---|
+| the classic PGP pages need a section-2 step to get a key onto the device | **FALSE, and now measured** - a classic RSA key goes in over the vendor interface with `OKSETPRIV`. The file loads both slots itself and never spawns a process |
+| `slotid()`'s two hardcoded slots can be filled from ONE PGP key | verified - a PGP key is a primary that signs plus a subkey that encrypts, so the primary's P‖Q goes to slot 2 and the subkey's to slot 1. Both moduli read back equal to openpgp.js's own `n` |
+| an RSA slot cares which factor is P and which is Q | **NO** - and the two key sources this kit uses disagree, so it was worth measuring rather than assuming. openpgp.js emits **p < q** every time (RFC 4880's convention, where `u = p⁻¹ mod q`); node:crypto's JWK export emits **p > q** every time (PKCS#1's, where `qi = q⁻¹ mod p`). Measured 5/5 each way. `19-rsa-keys` and `23-rsa-tunnel` load node's order and `08-pgp-encrypt-decrypt` loads openpgp's, and both sign and decrypt correctly - which follows from `rsa_sign()` recomputing D, DP, DQ and QP from whatever it was given |
+| `startEncryption`'s empty-argument guards protect the caller | **FALSE** - both test `to_pgpkeys.value == ""` / `from_signer.value == ""` while both pages pass STRINGS, so `.value` is `undefined` and neither guard can fire. `startDecryption`'s equivalents test the string and are fine. The empty input reaches `keyStore.loadPublic()`, which emits an error and **returns without resolving**, so the call never comes back and the output box never fills. Pinned by the second test, written to fail when it is fixed |
+| kbpgp hands the device a digest it can hash | verified, and the length is the whole contract: `pad_and_sign()` defaults to SHA512, so the device receives **64 bytes** and `rsa_sign()` maps that onto SHA-512. The device picks the hash from the LENGTH, so a kbpgp that changed hasher would silently change the signature's algorithm too |
+| the library's challenge digits are the device's | verified, and asserted rather than assumed - `get_pin()` takes bytes 0, 15 and 31 of SHA256 mod 6 plus 1, and the digits the page shows a user are required to equal the ones derived from the packet the device says it hashed. Measured `4,3,2` on the first run |
+| a PGP decrypt crosses the keyhandle boundary | verified - `auth_decrypt` sends `ct.slice(12)`, which for RSA-2048 is the whole 256-byte modulus-long ciphertext, so `u2fSignBuffer` frames it as 228 + 28. The device accumulated all 256, which is the client-side half of what `23-rsa-tunnel` proved firmware-side |
+| `usevirtru` is safe to pass as `false` | **NO** - `usevirtru != null` is TRUE for `false`, so `false` arms a Virtru branch that plugin.js's own `pgp()` never arms (it forwards an absent argument). `03-gui/07-pgp-keys` passes `false`; it only escapes because it never runs a file path. Pass nothing |
+| `_poll_delay` is chosen from the key's size | **NO, from the key id COUNT** - `loadPublicSignerID` sets 1 if a third key id exists and 8 otherwise, commented "Assuming RSA 4096 or 3072". An ordinary primary-plus-subkey RSA-2048 key has two, so every signature waits 8 seconds for no reason. Costs time, nothing else |
 
 `OKFWUPDATE` is the exception to "check it": it is not to be verified
 experimentally, and the gate is mechanical instead - see its row below.
@@ -819,7 +846,7 @@ Two things that are not optional for any of them, both already measured:
       either the kit mirrors that encryption and adds a poll loop, or - cheaper
       and the precedent `03-xwing-derive` set - the shipped library sends it and
       the kit checks the answer.
-- [ ] **A section-2 prerequisite that has DISSOLVED, which makes the row below
+- [x] **A section-2 prerequisite that has DISSOLVED, which makes the row below
       cheaper than PLAN says.** `03-gui/07-pgp-keys` is `device: false` and its
       header explains why the device-backed half is section 2's: it "needs a
       composite key loaded into a slot by `onlykey-cli setpqc`, which is not
@@ -828,44 +855,59 @@ Two things that are not optional for any of them, both already measured:
       slot with OKSETPRIV over the vendor interface - and `19-rsa-keys` does
       exactly that, from the kit, with no CLI at all. So the classic
       `startEncryption`/`startDecryption` half needs no section-2 step and can
-      run in section 3's headless tier, or section 1. PLAN's build sheet still
-      says "section 2" for that row and should be corrected when the file lands.
-- [ ] **`18-gui-encrypt-decrypt` - START WITH THE HEADLESS TIER.** This row is
-      row 1 of the table at the top of this file and nothing blocks it. What is
-      known, so the next attempt does not rediscover it:
+      run in section 3's headless tier, or section 1. **Settled**: it went into
+      section 3 as `08-pgp-encrypt-decrypt`, which loads both RSA slots itself and
+      never spawns a process, and PLAN's build sheet is corrected.
+- [x] **`18-gui-encrypt-decrypt`, THE HEADLESS TIER - DONE.**
+      `03-gui/08-pgp-encrypt-decrypt`, 6 tests in 135s, `--isolate` 6/6 and
+      `--reverse` green. All five of `_$mode()`'s modes driven through
+      `onlykeyApi.pgp().api()`, with `navigator.credentials.get` pointed at
+      `lib/device/ctap2.js` - no browser, no display, no CLI, no kernel HID node.
 
-      **The library half needs no browser and no CLI.** Put it at `03-gui/08-`,
-      beside the rest of the headless tier: load a classic RSA key into slots 1
-      and 2 over the vendor interface (copy `19-rsa-keys`' `loadKey`), then drive
-      `onlykeyApi.pgp().api()`'s `startEncryption`/`startDecryption` through
-      `lib/webenv.js` with `navigator.credentials.get` pointed at
-      `lib/device/ctap2.js`, the way `00-fido2-lib` and `03-xwing-derive` do. A
-      failure there is the LIBRARY. Only once that passes does a browser failure
-      mean the PAGE, which is the whole reason the tiers are split.
+      **The oracle is openpgp.js from the other side of the same key.** The key is
+      generated by openpgp.js and the device is given only its factors, so the
+      library's output goes back to a library that has never spoken to the device:
+      a signature it verifies is one a correspondent would verify, and a message
+      it opens is one anybody could open. Self-consistency would have proved
+      nothing here, since kbpgp wrote every message and would read its own
+      mistakes back happily.
 
-      **The device half is already proven, so it is not the variable.**
-      `23-rsa-tunnel` drives OKSIGN and OKDECRYPT over the same transport the page
-      uses and verifies both against node:crypto - a signature against the
-      published modulus, a plaintext against what was sealed to it. If the page
-      fails, the firmware is not the suspect.
+      **One PGP key fills both hardcoded slots**, which is the shape of the thing
+      and is not obvious from `slotid()` alone: the primary signs (slot 2) and the
+      subkey encrypts (slot 1), so `pgpRsaKey()` splits one generated key across
+      them and each modulus is read back over the vendor interface before anything
+      is asserted about an operation.
 
-      **Of the encrypt page's three modes only `Encrypt Only` avoids the device**,
-      so that one runs with nothing plugged in and is the cheapest "did we break
-      encrypt" check. Sign Only, Encrypt and Sign, and both decrypt modes go to
-      the RSA slots.
+      Two findings, both client-side and both in the premises table above: the
+      **`startEncryption` guards are unreachable and the mode hangs** rather than
+      erroring - pinned by its own test, written to fail when it is fixed - and
+      **`usevirtru` must be passed as nothing, not `false`**.
 
-      The browser half then carries the two constraints that are already measured
-      and are not optional: serve from `localhost`, NEVER `127.0.0.1` (WebAuthn
-      refuses an IP as an rpId, the pages swallow the error, and the only symptom
-      is an output box that never fills - and the RPID is folded into the
-      derivation, so a cross-check must ask the kit for the same rpId the browser
-      will use); and the device must be up and unlocked BEFORE any page opens, or
-      the startup OKCONNECT times out and Chromium raises a native WebAuthn dialog
-      no CDP command can dismiss.
+      A third that is only a cost: `_poll_delay` is picked from the key id COUNT
+      rather than the key size, so every signature waits 8 seconds against a
+      2048-bit key. That is most of why a device test here is ~30s.
+
+      **The device half was not the variable, as predicted.** `23-rsa-tunnel` had
+      already driven OKSIGN and OKDECRYPT over this transport; nothing in this
+      file failed on the firmware side, first run.
+
+      **What is LEFT is the browser tier**, and it carries the two constraints
+      that are already measured and are not optional: serve from `localhost`,
+      NEVER `127.0.0.1` (WebAuthn refuses an IP as an rpId, the pages swallow the
+      error, and the only symptom is an output box that never fills - and the RPID
+      is folded into the derivation, so a cross-check must ask the kit for the
+      same rpId the browser will use); and the device must be up and unlocked
+      BEFORE any page opens, or the startup OKCONNECT times out and Chromium
+      raises a native WebAuthn dialog no CDP command can dismiss.
+
+      **And one symptom now has two causes, which is worth knowing before
+      debugging the page**: "the output box never fills" is what the rpId mistake
+      looks like AND what an empty input box looks like, because of the unreachable
+      guards above. Check the inputs before blaming WebAuthn.
 
       Original scope note follows.
-- [ ] **`18-gui-encrypt-decrypt`** - the classic (non-PQC) PGP pages,
-      `/app/encrypt` and `/app/decrypt`, which no kit has driven. Split it the
+- [ ] **`18-gui-encrypt-decrypt`, the BROWSER half** - the classic (non-PQC) PGP
+      pages, `/app/encrypt` and `/app/decrypt`, which no kit has driven. Split it the
       way the old one did: of the encrypt page's three modes only **Encrypt
       Only** avoids the device entirely, so that half runs with nothing plugged
       in and is the cheapest possible "did we break encrypt" check. Sign Only,
@@ -899,9 +941,11 @@ Written down because it is nowhere else and a cold reader will assume otherwise.
   it. The fingerprint covers the built firmware and the state module, so the cache
   is valid until one of those moves.
 - **No test leaks state into another**, because each file gets a fresh copy of the
-  image - which is why `19-rsa-keys`, `22-rsa-slot-tail` and `23-rsa-tunnel` all
-  write RSA slots 1 and 2 freely and none of them cleans up. Do not add cleanup;
-  it would be dead code.
+  image - which is why `19-rsa-keys`, `22-rsa-slot-tail`, `23-rsa-tunnel` and now
+  `03-gui/08-pgp-encrypt-decrypt` all write RSA slots 1 and 2 freely and none of
+  them cleans up. Do not add cleanup; it would be dead code. The last of those
+  goes further and writes a fresh key **per test**, which is what buys it
+  `--isolate`: the cost is a key load each time, and that was the trade.
 - **`~/.cache/onlykey-testing/fixtures/` holds more than one `initialized-*`
   directory** - older fingerprints from previous firmware builds. Harmless, and not
   evidence of anything.
@@ -967,7 +1011,8 @@ that file skipped and never touched the key.
 
       **The gate is working, and this is the evidence.** Every file written since
       `--reverse` became a gate passes it: `01-protocol/13`-`22` (ten files, all
-      green) and `02-cli/10`-`15` (six files, all green). Every failure is in a
+      green), `02-cli/10`-`15` (six files, all green) and `03-gui/08` (green,
+      landed after this sweep and therefore outside its 55). Every failure is in a
       file that predates the rule. Nothing that landed under the two-gate rule
       has failed either gate.
 
@@ -1026,9 +1071,10 @@ this tally** - `01-protocol/13`-`22` and `02-cli/11`-`15`.
 All 15 pass `--isolate` individually, because they landed under the two-gate rule
 and could not have landed otherwise (the one row that does not record its result
 is `02-cli/10-cli-reads`). So at FILE level today it is 32 of 55 rather than 17 of
-40. The test-level percentage has NOT been re-derived and the table below is the
-40-file measurement - re-run the pass if the number matters, rather than
-arithmetic on this one.
+40 - 33 of 56 counting `03-gui/08-pgp-encrypt-decrypt`, which landed after both
+sweeps and passes both. The test-level percentage has NOT been re-derived and the
+table below is the 40-file measurement - re-run the pass if the number matters,
+rather than arithmetic on this one.
 
 Retrofitted **opportunistically**, when a file is being worked on for another
 reason. Not a project of its own: the sweep is worth more than a clean
@@ -1091,6 +1137,53 @@ test something different from what the file is for.
 
 ## Kit-side items from 2026-08-05, all small and all otherwise unrecorded
 
+- [ ] **THE WHOLE TREE NO LONGER FITS IN `RUN_MAX`, and the abort reports the
+      WRONG EXIT CODE. Two things, one run, and the second is the worse one.**
+      Measured 2026-08-05 22:25Z, and it is the maintainer's call which way to go.
+
+      **One: the budget.** `TIMEOUTS.RUN_MAX` is 900s. The 17:35Z full sweep took
+      879s, so the headroom was twenty-one seconds and nobody knew that was the
+      margin. `03-gui/08-pgp-encrypt-decrypt` costs 135s, so the next full run was
+      cut off at 903s with **225 passed, 0 failed** and section 2 unfinished.
+      Nothing failed. The choices are to raise `RUN_MAX`, to accept that the tree
+      is measured section by section (which is what PLAN's rows now do), or to make
+      the budget per-section rather than per-run. Raising it silently is the one
+      option that is wrong, because the watchdog is there to bound a wedged run and
+      15 minutes was chosen rather than defaulted.
+
+      **Two: a run-max that fires DURING A BOOT is reported as exit 5, not 3.**
+      This one is a defect regardless of which way the first is settled, and the
+      code says so itself. `deviceVerdict()` returns null when a watchdog has
+      fired, with the comment "classifying that as an external kill would hide the
+      watchdog behind exit 5" - and then the boot-failure path (`lib/runner.js`
+      ~425) does exactly that:
+
+      ```js
+      const verdict = deviceVerdict(transport, watchdogs) || {
+        code: EXIT.HOST_DIED,                       // <- 5, unconditionally
+        reason: `the device host never finished booting: ${err.message}`,
+      };
+      ```
+
+      So the sentinel carried the truth and the exit code contradicted it:
+
+      ```
+      OKT-END status=aborted code=5 ... reason="the device host never finished
+      booting: cancelled while waiting for ...: run-max watchdog: the run exceeded
+      its 900s maximum"
+      ```
+
+      **5 means "the run did not produce a verdict at all" and 3 means "a watchdog
+      fired"**, and README says the whole point of the codes is telling those apart
+      without reading anything. An agent that greps the code and not the reason
+      concludes the host died.
+
+      Same family as the SIGABRT row below and it wants the same treatment: fix the
+      path and add the case to `00-sanity/05-exit-classification` together, so the
+      oracle covers it rather than waiting for another 900-second run to prove it.
+      **Deliberately not fixed in the commit that found it** - it changes the kit's
+      verdict contract, which every other file's failure reporting rests on, and it
+      belongs in its own change with its own coverage.
 - [ ] **SIGABRT is classified as "not the firmware's fault", and it is.**
       `classifyExit()` maps SIGSEGV to a firmware crash (exit 2) but SIGABRT falls
       through to external/OOM (exit 5), which reads as "the run produced no
