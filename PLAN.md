@@ -15,11 +15,11 @@ wearing the present tense - and the two adapters drift apart at different rates.
 
 | | emulated | last run | hardware | last run |
 |---|---|---|---|---|
-| sanity | 53 passed, 0 failed | 2026-08-06 00:39Z | 50 passed, 0 failed | 2026-08-05 16:12Z |
-| section 1 | 112 passed, 0 failed, 1 skipped | 2026-08-05 21:02Z | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
-| section 2 | 104 passed, 0 failed (gadget) | 2026-08-06 01:25Z (arithmetic: 101 + `16-cli-key-files`' 3) | skipped - `client-access` | n/a |
-| section 3 | 84 passed, 0 failed (headless 56 + browser 28) | 2026-08-06 00:57Z | n/a - both tiers drive the emulator by design | n/a |
-| **whole tree** | **350 passed, 0 failed, 2 skipped** in 1459s | 2026-08-06 01:22Z | **118 passed, 9 skipped-with-reason** | 2026-08-05 16:24Z |
+| sanity | 53 passed, 0 failed | 2026-08-06 02:16Z | 50 passed, 0 failed | 2026-08-05 16:12Z |
+| section 1 | 112 passed, 0 failed, 1 skipped | 2026-08-06 02:16Z | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
+| section 2 | 104 passed, 0 failed (gadget) | 2026-08-06 02:16Z | skipped - `client-access` | n/a |
+| section 3 | 84 passed, 0 failed (headless 56 + browser 28) | 2026-08-06 02:16Z | n/a - both tiers drive the emulator by design | n/a |
+| **whole tree** | **353 passed, 0 failed, 2 skipped** in 1489s | 2026-08-06 02:16Z | **118 passed, 9 skipped-with-reason** | 2026-08-05 16:24Z |
 
 **THE WHOLE TREE STOPPED FITTING IN `RUN_MAX`, AND THAT IS WHY THIS ROW IS A
 REAL RUN AGAIN.** The 17:35Z sweep took 879s against a 900s cap - twenty-one
@@ -29,10 +29,17 @@ the cap **hours before anybody noticed**. The 22:25Z attempt was cut off at 903s
 with 225 passed and 0 failed; nothing had failed, the run had run out of budget.
 `RUN_MAX` is now 30 minutes, with the per-section measurements beside it in
 `lib/config.js` so it reads as a ceiling rather than a guess, and the row above
-is the whole tree end to end in **1459s** - which is within four seconds of what
-those measurements predicted before the run, so the arithmetic and the sweep
-agree again. 1459 of 1800 is 81% of the ceiling, which is the number to watch:
-the next few files put it back where the last one was.
+is the whole tree end to end in **1489s**. 1489 of 1800 is **83% of the ceiling**,
+which is the number to watch: the next few files put it back where the last one
+was.
+
+**EVERY ROW IN THE TABLE ABOVE COMES FROM THAT ONE RUN**, 2026-08-06 02:16Z, which
+is why they all carry the same date and why they sum exactly: 53 + 112 + 104 + 84
+= 353. The previous version of this table did not sum - the whole-tree figure was
+measured at 01:22Z and `02-cli/16-cli-key-files` landed at 01:25Z - and a reader
+doing the arithmetic would have found three tests missing and gone looking for a
+bug. Re-measured rather than annotated, because the annotation would have had to
+be removed later anyway.
 
 The lesson is in TODO: **a per-file cost is invisible against a per-run cap.**
 Every one of those six files was measured, green and cheap on its own.

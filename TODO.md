@@ -69,14 +69,15 @@ tried. Both halves are now done and only `13-pgp-pqc` is left.
 **When a file lands, update its section's `last run` in [PLAN.md](PLAN.md)'s
 counts table.** The emulated and hardware columns carry separate dates because
 they drift apart, and a count with no date reads as current when it is not. The
-emulated column is a whole-tree sweep as of 2026-08-06 01:22Z (350 passed, 1459s);
-the hardware column is 2026-08-05 16:24Z and has seen none of the files in the
-table above. Section 3 is the one most exposed to drift, since its browser tier
+emulated column is a whole-tree sweep as of 2026-08-06 02:16Z (353 passed,
+1489s), and every per-section row in that table comes from that same run, so they
+sum; the hardware column is 2026-08-05 16:24Z and has seen none of the files in
+the table above. Section 3 is the one most exposed to drift, since its browser tier
 depends on nw.js and the onlykey.github.io checkout rather than on anything this
 repo pins.
 
 **And watch the run budget when a file lands.** `RUN_MAX` is 30 minutes and the
-tree takes 1459s - 81% of it. That is not a lot of room, and the last time it ran
+tree takes 1489s - 83% of it. That is not a lot of room, and the last time it ran
 out nobody noticed for hours, because a per-file cost is invisible against a
 per-run cap. See the row under "Kit-side items".
 
@@ -1434,6 +1435,40 @@ test something different from what the file is for.
       **Deliberately not fixed in the commit that found it** - it changes the kit's
       verdict contract, which every other file's failure reporting rests on, and it
       belongs in its own change with its own coverage.
+- [ ] **AN EXIT-4 ABORT LEAKS ITS DEVICE HOST, and the evidence is four orphans
+      on this workstation right now.** `Reporter._installExitHandlers()`'s
+      `bail()` (lib/report.js:184) writes the sentinel and then calls
+      `process.exit(EXIT.RUNNER_ERROR)` directly - so the uncaught-exception and
+      unhandled-rejection paths never reach `stopDevice()`. The child reparents
+      to init and keeps running: the firmware thread spins, so each orphan costs
+      about 9% of a core indefinitely.
+
+      Measured 2026-08-06, four device hosts with `ppid=1`, two of them traceable
+      to their runs by pid and both the SAME failure shape:
+
+      | pid | run | sentinel |
+      |---|---|---|
+      | 752721 | `20260804-230114-752710` | `code=4 ... "unhandled rejection: TypeError: Cannot read properties of undefined (reading 'emit')"` |
+      | 995541 | `20260805-214524-995530` | `code=4 ... "unhandled rejection: TypeError: onlykeyApi.getKey is not a function"` |
+
+      The other two came from ad-hoc runs in another session's scratch directory
+      that drove `lib/host/device-host.js` directly rather than through the
+      runner, so they are the same leak reached by a different door.
+
+      **`lib/gui.js` already solved this and the device host never got the same
+      treatment**, which is the useful part: `installSafetyNet()` registers
+      `process.on('exit', killEverything)` for the browser and the web server,
+      added after "one aborted run left seven Chromium processes and an express
+      server holding both ports, and the NEXT run then failed in startServer()
+      with a port conflict a long way from the cause". The device host has no
+      equivalent. Give it one - a process-group kill on `exit`, the same shape -
+      rather than adding a `stopDevice()` to each bail path, because the
+      scratch-run door proves the paths are not enumerable.
+
+      **It is quieter than the browser version**, which is why it went unnoticed
+      for two days: an orphaned device host holds no port and no device node, so
+      nothing later fails because of it. It just burns a core and holds a
+      `flash.bin` mapping. The only symptom is `ps`.
 - [ ] **SIGABRT is classified as "not the firmware's fault", and it is.**
       `classifyExit()` maps SIGSEGV to a firmware crash (exit 2) but SIGABRT falls
       through to external/OOM (exit 5), which reads as "the run produced no
