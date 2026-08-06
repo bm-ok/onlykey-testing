@@ -279,6 +279,28 @@ the first test that stores a PIN. The runner reads the rung back and treats it
 as a capability, so a run that lands there **skips the crypto files with a
 stated reason** instead of reporting a pile of crashes.
 
+## Seeing what a page is actually showing (authoring only)
+
+When a browser-tier or app-tier test does not land where you expected, you can
+look. **This is an authoring technique, not a kit feature - no committed test
+may depend on it**, and captures are throwaway like probe files.
+
+```sh
+# the whole window, including native chrome, title bar and dialogs
+python3 -c "from PIL import ImageGrab; ImageGrab.grab(xdisplay=':100').save('shot.png')"
+```
+
+Pillow speaks X11 directly, so nothing else needs installing. For page content
+only, CDP's `Page.captureScreenshot` returns base64 in `result.data` - write
+`Buffer.from(data, 'base64')` to a file, and pass `captureBeyondViewport: true`
+for a tall page, which otherwise renders cropped.
+
+Reach for it when an element is in the DOM but you are not sure it is VISIBLE,
+or when a flow does not go where the code says it should. It settled two
+questions in one run while `04-app/11` was being written: that the App had
+reached its Slots tab with twelve empty slots rather than being stuck, and that
+a control which existed at 0x0 was the wrong twin of a duplicated id.
+
 ## Writing a test file
 
 One suite per file, flat, with metadata:

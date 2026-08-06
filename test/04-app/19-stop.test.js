@@ -16,7 +16,7 @@
 
 const { describe, it } = require('../../lib/harness');
 const { CDP_PORT } = require('../../lib/app');
-const { get } = require('../../lib/gui');
+const { get, waitFor } = require('../../lib/gui');
 
 const session = require('../../lib/app-session-holder');
 
@@ -55,7 +55,19 @@ describe('section 4 stop', {
      * The assertion that makes the file worth having. A stopped process that
      * still holds 9223 is indistinguishable from a running one to the next
      * session's start check, and that failure arrives in a different file.
+     *
+     * WAITED FOR, NOT SAMPLED ONCE. The first version read the port a single
+     * time immediately after the kill and failed - a SIGTERM to a process group
+     * is a request, and Chromium takes a moment to unwind and let go of the
+     * socket. Sampling something still in progress reads as a failure for the
+     * same reason sampling something still arriving reads as an absence, which
+     * this section has now hit three times in two files.
      */
+    await waitFor(`CDP on ${CDP_PORT} to be released`, async () => {
+      const res = await get(CDP_PORT, '/json/version', 1000);
+      return !!res.err;
+    }, { timeoutMs: 20000 });
+
     const res = await get(CDP_PORT, '/json/version', 1000);
     assert.ok(res.err,
       `something is still answering CDP on ${CDP_PORT} after the stop`);

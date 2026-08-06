@@ -1191,6 +1191,40 @@ first and has never been pointed at the second.
       costs nothing and saves the download. The three build packages (`gulp`,
       `gulp-sourcemaps`, `fs-jetpack`) are pure JS and need no install script.
 
+      **WHERE IT GOT TO, 2026-08-06.** `04-app/10-session` and `19-stop` are
+      landed and green (7 tests, 7s) - the session, the build, the window, the
+      chrome.hid check, and a stop that proves the port came free. The first
+      COVERAGE file is **parked in [wip/11-app-slot-config.test.js](wip/11-app-slot-config.test.js)**,
+      the same way `13-pgp-pqc` is: kept without being run, because a file does
+      not land until it is green and this one is not. Its first test passes -
+      the App reports a live connection to the emulated device - and the three
+      that drive the UI do not yet.
+
+      **The one thing left to find, stated precisely so the next attempt does not
+      start from the top.** Clicking the visible slot-1a control does nothing,
+      and the reason is NOT what the first three guesses said:
+
+      | guess | measured |
+      |---|---|
+      | the App is reload-looping on a version it cannot classify | **NO.** Stamped the window and sampled it 8 times over 12s - the stamp survived every one. `version` is `v3.0.4-testc`, `lastChar` is `c`, so `setDeviceType()` classifies it `classic` correctly |
+      | the App never noticed the unlock | **NO.** `isInitialized: true, isLocked: false, deviceType: classic, connection: 2`, and a screenshot shows the Slots tab open with twelve `empty` slots |
+      | the control is missing | **NO - it is TRIPLICATED.** `slot1aConfig` appears **three times** in app.html. The one that is VISIBLE (w=33, inside `<table id="classic-slots" class="ok-classic">`) carries NO `data-slot-id`; the two that carry it are 0x0 in hidden panels. A rule of "first" or "the one with the data attribute" is an accident of document order either way - pick whichever is actually visible |
+
+      So the click reaches the right element and the dialog still does not open,
+      which points at **`initSlotConfigForm()` not having run yet** at click time:
+      it is what binds `showSlotConfigForm` to those inputs, and it binds only
+      inside `ok-${deviceType}`, so it cannot bind before the device type is
+      known. The next step is to find the event that runs it and wait for a
+      consequence of it, rather than waiting for the button to exist - the same
+      distinction that has now cost this section three iterations.
+
+      **And one section-wide constraint learned the hard way**: a page wait
+      produces no device output, so any wait longer than the **30s inactivity
+      budget** aborts the whole run with exit 3 and blames a watchdog rather than
+      the test that hung. Section 2 caps its CLI commands at 12s for exactly this
+      reason; the arithmetic is the same for anything waiting on a browser. Every
+      wait in section 4 is under 20s.
+
       What is NOT known, and should be established before writing tests:
       - **`build/` is GITIGNORED** (`.gitignore:5`), so the question this row
         used to ask - "is the checked-in `build/` current" - has no answer:
@@ -1604,8 +1638,15 @@ inferred from their absence, which is how an untested file starts looking tested
 `--isolate` each test would get its own device session and start its own App with
 nothing to stop it; under `--reverse` the chrome.hid test would run before the
 start test and fail on a session that does not exist yet. Neither is isolation
-debt. Every OTHER file in section 4 is expected to pass both, the same way
-section 2's sweep is.
+debt.
+
+**And that extends to the whole section, which the first version of this
+paragraph got wrong.** Every device-driving file in section 4 needs the session
+`10-session` holds, exactly as `03-gui/14-gui-encrypt-decrypt` does, so the
+section is outside both gates by construction rather than by debt. What is
+required instead is the same discipline `14` keeps: **minimum coupling within
+the file** - every test establishes the device state it asserts about and
+attaches its own page, so that a failure names one test rather than the file.
 
 **`03-gui/10-session`, `11`, `12`, `14`, `19-stop` are not in the tally and are
 not debt.** They are structurally non-isolatable BY DESIGN: `10-session` starts
