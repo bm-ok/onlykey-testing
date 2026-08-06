@@ -1154,9 +1154,44 @@ first and has never been pointed at the second.
       nothing downstream changes; the citation pointed at the wrong side of the
       fence.
 
-      What is NOT known, and should be established before writing tests:
+      **THE GATING UNKNOWN IS ANSWERED: `chrome.hid` WORKS.** Measured
+      2026-08-06, one launch of the REAL App with its REAL manifest under the
+      kit's own nw - because "does nw expose chrome.hid to anybody" is a
+      different question from "does it expose it to this app, with these
+      permissions", and only the second one gates anything.
 
-      - Whether `chrome.hid` works under this nw.js at all.
+      | | |
+      |---|---|
+      | runtime | nw **0.114.0**, Chromium **151.0.7922.0** - the kit's own SDK build, not the App's declared `nw ^0.71.1` |
+      | `chrome.hid` | **present in BOTH targets**, all nine methods: `getDevices` `connect` `disconnect` `send` `receive` `sendFeatureReport` `receiveFeatureReport` `onDeviceAdded` `onDeviceRemoved` |
+      | `getDevices({}, cb)` | **actually called back** - `lastError` null, 0 devices, which is correct: nothing was on the bus. Presence is not function, so the call was made rather than the API merely inspected |
+      | targets | `[app] app.html` and `[background_page] _generated_background_page.html`, both drivable over CDP |
+      | `chromeHid` | reachable by name in the app window (`typeof` = `object`), which is where a wrapper would be installed. **Absent from the background page** - it is a `const` in the window's script, so instrumentation belongs on the app target |
+
+      The App got as far as `OnlyKeyComm init()` and enumerated all three
+      supported pairs on its own. **So both options were live and option A is
+      not blocked** - and section 4 does not need the App's own nw.
+
+      **One benign startup exception, characterised so nobody chases it.** The
+      BACKGROUND page throws `TypeError: Cannot read properties of undefined
+      (reading 'hasOwnProperty')` at `app.js:106` - `localStorage.hasOwnProperty
+      ('autoLaunch')` in the `else if (typeof nw != 'undefined')` branch, where
+      nw's node context has no `localStorage` unless it was given a file. The APP
+      WINDOW is unaffected and inits cleanly, so it costs nothing but noise.
+      **`--localstorage-file=<path>` does NOT fix it** - tried, the warning and
+      the exception both survive - so do not spend a second attempt on that flag.
+
+      **`npm install --ignore-scripts` in the App: DECIDED AND VERIFIED, do not
+      re-litigate.** The App's `nw ^0.71.1` is a RUNTIME dependency, so a plain
+      install downloads a ~150MB runtime the kit has no use for - it drives the
+      App with its own nw, as the measurement above shows. Measured on a clean
+      copy: **install 6s / 711 packages / 71MB total, with `node_modules/nw` at
+      244K** - the package without its binary - and **`gulp build` then succeeds
+      and produces byte-identical output** to a normal install's. So the flag
+      costs nothing and saves the download. The three build packages (`gulp`,
+      `gulp-sourcemaps`, `fs-jetpack`) are pure JS and need no install script.
+
+      What is NOT known, and should be established before writing tests:
       - **`build/` is GITIGNORED** (`.gitignore:5`), so the question this row
         used to ask - "is the checked-in `build/` current" - has no answer:
         there is no checked-in `build/`. What is on this workstation is a local
@@ -1182,10 +1217,19 @@ first and has never been pointed at the second.
       - Whether a packaged app and the kit's own device host can hold the gadget
         at once. Section 3's browser tier proves a browser and the kit can share
         it (different nodes: `/dev/hidg*` device side, `/dev/hidraw*` host side),
-        but nothing has tried it with `chrome.hid`.
-      - Whether the App has a landing state that touches no device, the way
-        `tools/nwjs`'s page does. If not, the "device up and unlocked BEFORE
-        anything opens" rule from section 3 has nowhere to stand.
+        but nothing has tried it with `chrome.hid`. **Still open** - the probe
+        above ran with an EMPTY bus on purpose, so it says nothing about sharing.
+      - Whether the App has a landing state that touches no device.
+        **Partly answered: it does not need one.** It has no device-free page -
+        `app.html` enumerates as it loads - but with nothing on the bus it
+        settles into the disconnected dialog and waits, which is a safe place to
+        start from. More importantly the section-3 rule it was borrowed from does
+        not apply here: "device up and unlocked BEFORE anything opens" exists
+        because a timed-out startup OKCONNECT makes **Chromium raise a native
+        WebAuthn dialog** no CDP command can dismiss. The App uses `chrome.hid`,
+        not WebAuthn, so that wedge has no equivalent. **What is NOT measured is
+        the device-up-but-LOCKED case**, which is the one worth checking before
+        assuming the rule can be dropped.
 
 ## 6. Section 5 - security. PLANNED, NOT BUILT, AFTER THE SWEEP
 
