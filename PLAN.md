@@ -9,18 +9,22 @@ them, with what each one needs. Read that to pick something up; read this to
 understand what you picked up. When an item is finished, both files change: the
 box in TODO.md and the reasoning here.
 
-Both adapters green, hardware on `libraries@83353cf`. **Each row carries when it
-was last measured**, because a count without a date is a claim about the past
-wearing the present tense - and the two adapters drift apart at different rates.
+Both adapters green as of 2026-08-06, hardware on `libraries@83353cf`. **Each row
+carries when it was last measured**, because a count without a date is a claim
+about the past wearing the present tense - and the two adapters drift apart at
+different rates. This sentence read "Both adapters green" with no date at all
+until 2026-08-06, by which point the hardware column was a day stale and had seen
+nine fewer files than the tree contained - a header that had quietly stopped
+being a measurement, which is the exact failure the dates exist to prevent.
 
 | | emulated | last run | hardware | last run |
 |---|---|---|---|---|
-| sanity | 53 passed, 0 failed | 2026-08-06 02:16Z | 50 passed, 0 failed | 2026-08-05 16:12Z |
-| section 1 | 112 passed, 0 failed, 1 skipped | 2026-08-06 02:16Z | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
+| sanity | 53 passed, 0 failed | 2026-08-06 02:16Z | 53 passed, 0 failed | 2026-08-06 13:28Z |
+| section 1 | 112 passed, 0 failed, 1 skipped | 2026-08-06 02:16Z | 94 passed, 0 failed, 19 skipped | 2026-08-06 13:28Z |
 | section 2 | 104 passed, 0 failed (gadget) | 2026-08-06 02:16Z | skipped - `client-access` | n/a |
 | section 3 | 84 passed, 0 failed (headless 56 + browser 28) | 2026-08-06 02:16Z | n/a - both tiers drive the emulator by design | n/a |
 | section 4 | 15 passed, 0 failed | 2026-08-06 04:13Z | n/a - needs `client-access`, the gadget | n/a |
-| **whole tree** | **353 passed, 0 failed, 2 skipped** in 1489s | 2026-08-06 02:16Z | **118 passed, 9 skipped-with-reason** | 2026-08-05 16:24Z |
+| **whole tree** | **353 passed, 0 failed, 2 skipped** in 1489s | 2026-08-06 02:16Z | **147 passed, 0 failed, 19 skipped-with-reason** in 837s (sections 0+1; 2-4 cannot run there) | 2026-08-06 13:28Z |
 
 **THE WHOLE-TREE ROW PREDATES SECTION 4 AND NO LONGER SUMS**, said here rather
 than silently corrected by arithmetic, which is the mistake this table has
@@ -62,18 +66,38 @@ Every one of those six files was measured, green and cheap on its own.
 their own** - `19-rsa-keys` 7, `20-second-profile` 3, `21-self-destruct` 2,
 `22-rsa-slot-tail` 2, `23-rsa-tunnel` 2 (+1 gated off). It is confirmed by the
 00:39Z whole-tree run rather than only by that arithmetic. All sixteen are green three ways
-each: natural order, `--isolate` and `--reverse`. Neither adapter has run the whole
-tree since, and **the hardware column has seen none of the five**. All five are
-section 1 and therefore hardware-capable in principle, but three carry gates that
-will skip on a key or hold a test back:
+each: natural order, `--isolate` and `--reverse`.
+
+**THE HARDWARE COLUMN HAS NOW SEEN THEM, AND THE COUNT HERE WAS WRONG - IT IS
+NINE FILES, NOT FIVE.** This paragraph said "none of the five" and named
+`19`-`23`, which undercounted by four: the 2026-08-05 hardware sweep ended at
+16:24Z, and `15-hmac-secret` (16:54Z), `16-credprotect`, `17-resident-keys` and
+`18-clientpin-credmgmt` (17:20Z) all landed after it. Measured from git rather
+than recalled, which is how the four were found. All nine ran against the key on
+2026-08-06; `15`, `16` and `17` are green on hardware for the first time.
+
+Behaviour of the gates on a key, now MEASURED rather than predicted:
 
 | file | gate | on a key |
 |---|---|---|
-| `21-self-destruct` | `full-wipe` | skips unless `OKT_ALLOW_FULL_WIPE=yes` |
-| `22-rsa-slot-tail` | `storage-files` | skips - no physical key has a `flash.bin` |
-| `23-rsa-tunnel` | its 4096 test only | skips unless `OKT_EXPECT_RSA4096_FIX=yes`, because loading a 4096-bit key aborts the firmware |
+| `18-clientpin-credmgmt` | `fido-reset` | skipped, 5 tests, unless `OKT_ALLOW_FIDO_RESET=1` |
+| `21-self-destruct` | `full-wipe` | skipped, 2 tests, unless `OKT_ALLOW_FULL_WIPE=yes` |
+| `22-rsa-slot-tail` | `storage-files` | skipped, 2 tests - no physical key has a `flash.bin` |
+| `23-rsa-tunnel` | its 4096 test only | skipped; **now `emulated` AND the env var**, see below |
 
-All three are the gates working rather than gaps.
+All are the gates working rather than gaps. `23-rsa-tunnel`'s other two tests
+RAN and passed on the key - classic RSA over the WebAuthn transport against
+physical hardware for the first time - so the file is hardware-capable and
+gating it wholesale would have thrown that away.
+
+**The 4096 test gained a capability gate on 2026-08-06, and the reason is
+asymmetric.** It was held only by `OKT_EXPECT_RSA4096_FIX=yes`, an environment
+variable with no hardware guard, so setting it on a hardware run would have
+aimed a known out-of-bounds WRITE at a physical key. What makes that case safe
+to drive is `_FORTIFY_SOURCE`, which is the emulator's: it aborts at the point
+of the overflow, which is how the defect was found. On a key the same write
+lands silently. The capability is now checked first, so the variable can only
+arm it where the abort exists.
 
 **`--reverse` has now been measured across the tree** the way `--isolate` was -
 55 files in scope, 30 pass, 25 fail, all recorded as debt in TODO rather than
@@ -113,10 +137,26 @@ Run directories under `runs/` carry the authoritative record - each has a
 second line names the adapter.
 
 The key is flashed with `libraries@83353cf` and sections 0 and 1 pass on it -
-re-run 2026-08-05 after `13-large-response` and `14-stored-keys` landed, and both
-pass on hardware unchanged. The nine hardware skips are `00-boot` x2 and
-`02-restart` x2 (the emulator's two-process lifecycle) and `05-snapshot` x5
-(`image-snapshots`).
+re-run 2026-08-06, 147 passed in 837s, run `20260806-131421`. The **19** skips
+reconcile exactly and are worth reading as four groups rather than one number:
+`00-boot` x2 and `02-restart` x2 (`device-host` - the emulator's two-process
+lifecycle), `05-snapshot` x5 (`image-snapshots`), `18-clientpin-credmgmt` x5
+(`fido-reset`), `21-self-destruct` x2 (`full-wipe`), `22-rsa-slot-tail` x2
+(`storage-files`), and `23-rsa-tunnel`'s 4096 case. The count grew from 9 to 19
+because nine files landed after the last hardware sweep, not because anything
+stopped running.
+
+**THAT RUN IS ALSO THE FIRST HARDWARE NUMBER WORTH TRUSTING, AND THE EARLIER ONES
+WERE MEASURING A LEAKY ADAPTER.** `_open()` in `lib/device/hardware.js` was not
+idempotent: a re-enumerating key races udev, so a reopen a few milliseconds early
+failed with EACCES *part way through the loop*, leaving already-opened handles
+live while the caller retried and opened a second set over the top. The orphan
+kept its `data` listener, so SEREMU was delivered twice and the console
+accumulator - which several section-1 tests use as their only oracle - filled
+with interleaved duplicates. Two runs failed on it and each passed on a rerun,
+looking exactly like flaky firmware. See the adapter's own comment for the
+evidence and the fix; the short version is that the open order decided whether a
+denial could do damage, and only denials on an interface *after* the first could.
 
 **`13-large-response` means something on hardware that it cannot mean on the
 emulator.** `core-override/okemu_usb.cpp`'s `usb_rawhid_send2()` is a one-line

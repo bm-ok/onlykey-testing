@@ -467,7 +467,8 @@ on, and the first changes what that row costs:
 | the slot buttons are dead / the App is stuck | **NO to both - `getAttribute('open')` was the wrong instrument, and it cost three iterations.** `showModal()` sets the `open` attribute to the **EMPTY STRING**, so `!!el.getAttribute('open')` is false for a dialog that is wide open. The dialog had been opening all along. The App's own selenium test compares `getAttribute('open')` to `'true'` and is right only because **WebDriver normalises boolean attributes**; anything reading the raw DOM must use the `open` PROPERTY. A rule ported out of a selenium suite is not automatically true outside it |
 | the App binds its slot buttons when it shows them | **NO - there is a ~1.2s window in which they are visible and dead.** `initSlotConfigForm()` does the `addEventListener` and is reached only from `handleGetLabels()`, so the binding waits for the first OKGETLABELS reply while the panel is revealed from the unlocked state. Measured 1163ms, with a click issued from inside the page in the same frame the button was first laid out - and with a positive control (a click after binding opens the dialog). A real user reaches it by clicking a slot as soon as it appears. [FINDING-app-slot-button-dead-window.md](FINDING-app-slot-button-dead-window.md) |
 | the App sets NEXTKEY3 to Return without being asked (its own FIXME) | **NOT REPRODUCIBLE against a device.** Configuring a password through the UI and pressing types the password and nothing after it. Control in the same test: writing NEXTKEY3 by hand over the vendor interface makes the same press type `"\n"`, so the absence is real rather than a decoder that drops Returns. `04-app/11` asserts the measured behaviour and fails if a Return ever appears |
-| "Successfully set RSA Key" means the key is durable | **NO - a reboot immediately after the ack loses the second key, MECHANISM STILL UNKNOWN, and both of my first explanations are DISPROVEN.** Auto-loading a PGP key writes slot 2 then slot 1; rebooting as soon as the second ack arrives leaves slot 2 readable and slot 1 answering "Error no RSA Private Key set in this slot". Isolated by changing one thing - with everything else fixed, adding a 6s settle passes and removing it fails, three times each. `04-app/12` carries the settle and says why. **Disproven 1: "the emulator batches EEPROM until shutdown."** `okemu_eeprom_write()` is an immediate per-byte `pwrite` (`emulator/src/ok_hal.cpp:594`), and flash is `MAP_SHARED` on `flash.bin`, which survives a SIGKILL. **Disproven 2: "the ack precedes the writes."** In `rsa_priv_flash()` the order is `okeeprom_eeset_rsakey()`, then `okcore_flashset_common()`, then `hidprint("Successfully set RSA Key")` - the ack is last. **What the failure actually means:** `okcore.cpp:5436` emits that string when `okeeprom_eeget_rsakey(&type, slot)` returns **type == 0**, so slot 1's EEPROM type byte is absent after the reboot despite an ack that should have followed its write. **The cheap next step, and it needs no hardware:** dump `eeprom.bin` from the file's run directory immediately after the second ack and again after the restart, and compare the slot-1 type byte - that separates "never written" from "written and lost", which is the whole question. A hardware run is the confirmation, not the diagnosis |
+| "Successfully set RSA Key" means the key is durable | **THE QUESTION WAS WRONG. SETTLED 2026-08-06: it is a defect in THIS KIT'S TEST, not in the firmware and not in the emulator.** The ack loop in `04-app/12-app-keys` captured `device.mark()` ONCE and reused it for both iterations. `waitHid` re-scans from its `since` and returns the FIRST match without consuming it or advancing the mark, so both iterations returned the SAME report - the loop harvested two acks from one ack on the wire and walked on while the App was still writing its second slot. The 6s settle was buying the App time to finish, which is why removing it failed deterministically and why no durability theory ever fit. Demonstrated with a positive control, not argued: the loop collects 2 acks from 1 report, and the identical wait with a fresh mark correctly times out. **Three things independently rule out the durability story**: the ack is emitted LAST in `rsa_priv_flash()`; `okemu_eeprom_write()` is an immediate per-byte `pwrite` (`emulator/src/ok_hal.cpp:589`) and flash is `MAP_SHARED`, so nothing durable dies with the SIGKILL a restart is; and `lib/pgp-rsa.js`'s `loadSlots()` does the identical two-slot-write-then-immediate-restart with **no settle at all**, driven six times by `03-gui/08` under `--isolate`, never losing a slot - because it takes a FRESH mark per slot, which is the bug's exact inverse. Loop fixed; the sleep is kept and labelled pending one measurement against the App |
+| ...and the way to settle it is to dump `eeprom.bin` before and after | **NO - that experiment had only ONE LIVE BRANCH and could never have discriminated anything.** It was proposed to separate "never written" from "written and lost". Per-byte `pwrite` makes "written and lost" impossible by construction, so the answer was always going to be "never written", and reading that as a result would have confirmed a mechanism that was not operating. A test whose two outcomes are not both reachable is not a test |
 | the App can restore a backup, and driving it is a matter of attaching a file | **UNSETTLED, and deliberately not asserted.** With a device-written backup attached to `#restoreSelectFile` over CDP's `DOM.setFileInputFiles`, the App displays "Restoring from backup please wait..." with an empty error box and then **nothing reaches the device** - zero vendor replies and no reboot across 45s, the device still answering `unlocked`. Two readings this could not separate: the App's restore stalls before transmitting (a real defect in a path carrying a whole device's secrets), or a debugger-injected `File` is not one this nw.js's FileReader will read (a harness artefact saying nothing about the App). **What settles it in one run:** wrap `submitRestoreData()` from the page - a top-level function, wrappable the way `initSlotConfigForm` was in `04-app/11` - and see whether it is called and with how many bytes. `#restoreSelectFile` is ALSO a duplicate id (app.html lines 305 and 1040), which cost one iteration on its own |
 | the App ships a harness, so there is something to adopt | **TRUE, but it does not RUN as shipped.** `test/` holds FOUR files, not the three tabled in §5: the fourth is `serial.js`, which requires `node-hid` - **not a dependency of that repo** - and `chalk`. Mocha's default glob is `test/*.js`, so `npm test` dies at that require; past it, `serial.js`'s 1 ms `setInterval` would stop mocha exiting, and `driver.js` launches nw.js at module scope rather than in a hook. Adopting means repairing three defects in somebody else's repo first |
 
@@ -475,6 +476,21 @@ on, and the first changes what that row costs:
 experimentally, and the gate is mechanical instead - see its row below.
 
 The slot-field count was checked and is corrected below.
+
+Checked 2026-08-06 by running sections 0 and 1 against the PHYSICAL KEY, which is
+what most of these needed. Four were documentation claims nobody had re-measured;
+the last two are the kind this table exists for, because both were absences that
+turned out to be broken instruments.
+
+| claim | status |
+|---|---|
+| the hardware adapter is "a declared seam with a stub behind it" (README) | **FALSE, and contradicted by PLAN's own hardware column for two days.** `lib/device/hardware.js` is 453 lines, carries measurements taken against a key, and runs **147 passed / 0 failed / 19 skipped in 837s**. README's bullet is corrected and now says what the run exercises and what it does not |
+| PLAN's "the hardware column has seen none of the five" | **UNDERCOUNT - it is NINE files, not five.** The hardware sweep ended 16:24Z on 2026-08-05; `15-hmac-secret` (16:54Z), `16-credprotect`, `17-resident-keys` and `18-clientpin-credmgmt` (17:20Z) all landed after it and were never named. Found by measuring first-commit dates from git rather than reading the list. All nine have now run on the key |
+| "Both adapters green" (PLAN's opening line) | **A HEADER THAT HAD STOPPED BEING A MEASUREMENT.** It carried no date while every row beneath it did, and by 2026-08-06 the hardware half was a day stale over a tree nine files larger. Now dated |
+| `22-rsa-slot-tail` and `23-rsa-tunnel` "pass quietly" on a key because they lean on emulator-only affordances | **NEITHER, and they are not the same case.** `22` already requires `storage-files` and SKIPPED on the key, both tests, with the reason printed - the gate was right and had simply never been observed firing. `23` requires only `crypto`, **RAN, and both tests passed** - classic RSA over the WebAuthn transport against physical hardware for the first time. Gating it would have destroyed real coverage. What DID need tightening was its 4096 test: held only by `OKT_EXPECT_RSA4096_FIX=yes`, an env var with no hardware guard, so setting it on a hardware run would aim a known out-of-bounds WRITE at a real key with no `_FORTIFY_SOURCE` to catch it. Now gated `emulated` first |
+| a flaky hardware test means flaky firmware | **NO - it was THIS KIT leaking file handles.** `_open()` was not idempotent: a re-enumerating key races udev, so a reopen a few ms early fails `EACCES` *part way through the loop*, leaving already-opened handles live while the caller retries and opens a second set over the top. The orphan keeps its `data` listener, so SEREMU arrives TWICE and the console accumulator - the only oracle several section-1 tests have - fills with interleaved duplicates. `23-rsa-tunnel` read a 32-byte digest as 54. **The open ORDER decided whether a denial mattered**: SEREMU is opened first, so its 30 denials per run were harmless, while VENDOR's 2-4 were the only ones that could leak. Fixed two ways - a pre-flight `fs.access` on every required node, and an all-or-nothing open that unwinds what it opened |
+| ...and a clean run after the fix proves it | **WEAKER THAN THE REAL EVIDENCE, which is that the race fired HARDER in the passing run.** VENDOR denials went 2 (failing run) -> 4 (passing run) with total churn flat at 105 -> 107; both previously-failing tests came back green. "The fix made the run green" invites the flake reading; "the fault fired twice as often and the run passed anyway" rules it out. Then a third run with the pre-flight logged 42 access rejections and **zero** cases of a required interface failing after something was opened |
+| run `20260806-122122`'s zero interface errors show the leak was not involved in `10-backup-restore`'s failure | **NO - THAT ZERO IS AN ABSENT LOGGER, NOT AN ABSENT FAULT**, and this is the fourth entry in the table above it. The runner only began subscribing to `interface-error` at 12:30:34Z; that run started at 12:21:22Z. Nothing was listening, so nothing could be recorded. A correlation table built across those runs is blind in its early rows rather than clean in them. `10-backup-restore`'s 90s generation timeout is **still open and retroactively untestable** - only a recurrence with the instrumentation present can settle it |
 
 ## 2. Section 1 - the protocol surface, now mostly touched
 
@@ -1507,27 +1523,39 @@ Written down because it is nowhere else and a cold reader will assume otherwise.
 ## The state the physical key was left in
 
 Recorded because it is nowhere else and the next hardware run inherits it.
-**NOTHING in the 2026-08-05 evening session touched hardware** - every run was
-emulated - so what follows still stands, and the five files that landed that
-evening have never run against a key. On
-2026-08-05 sections 0 and 1 ran against the key (`libraries@83353cf`), and three
-things persist - there is no fixture restore on hardware:
+Updated 2026-08-06 after sections 0 and 1 ran against the key
+(`libraries@83353cf`), run `20260806-131421`. There is no fixture restore on
+hardware, so whatever the last file did is what the next run finds.
 
-- **ECC1 (slot 101)** holds the X-Wing key `14-stored-keys` generated last.
-- **RSA1** holds `13-large-response`'s random 160-byte composite PQC blob. It is
-  not a real key; it is seeds, and it will sign and decrypt happily.
-- **`stored_key_challenge_mode` = 1**, which is the one that changes the key's
-  security posture: every stored-key crypto operation now takes ONE press of any
-  button instead of a three-digit challenge. `14-stored-keys` sets it and does
-  not restore it.
+**The key was WIPED AND RE-PROVISIONED during this run** - `03-wipe` and
+`04-provisioning` do that every time on hardware - so the 2026-08-05 leftovers
+recorded here previously (an X-Wing key in ECC1, a composite blob in RSA1) are
+gone, and any conclusion resting on them is void. What persists now:
 
-Undoing the last one means entering config mode and writing slot field 22 back
-to `0` **as the byte, not the character** - see README, "Challenge modes". The
-first two are overwritten by whatever runs next.
+- **RSA1 and RSA2** hold `19-rsa-keys`' and `23-rsa-tunnel`'s RSA-2048 test keys,
+  the later file overwriting the earlier. Real keys, generated per run.
+- **ECC slots** hold `14-stored-keys`' six key types, the last written being
+  X-Wing in slot 101.
+- **`stored_key_challenge_mode` = 1**, still, and still the one that changes the
+  key's security posture: every stored-key crypto operation takes ONE press of
+  any button instead of a three-digit challenge. `14-stored-keys` sets it and
+  does not restore it. It survives the wipe because the wipe runs BEFORE it.
+- **A slot label and password from `10-backup-restore`'s restore**, which is the
+  file's own point.
+
+Undoing the challenge mode means entering config mode and writing slot field 22
+back to `0` **as the byte, not the character** - see README, "Challenge modes".
+Everything else is overwritten by whatever runs next.
 
 Not left behind: no FIDO2 client PIN. `18-clientpin-credmgmt` sets one, but it
 requires `fido-reset`, which is false on hardware unless somebody opts in - so
-that file skipped and never touched the key.
+that file skipped all five of its tests and never touched the key. Confirmed in
+this run's skip list rather than assumed.
+
+**And note what a hardware run costs the key**, since nothing said so before:
+about **30 reboots**, a full wipe, a re-provisioning, and a restore. That is
+fine for a developer key and is worth knowing before pointing this at one that
+matters.
 
 ## Order debt, the other direction - MEASURED
 

@@ -756,9 +756,31 @@ in-process bus like section 1.
 
 ## Not built yet
 
-- **The hardware adapter** is a declared seam with a stub behind it
-  (`lib/device/hardware.js`), which documents what it has to do and why the
-  emulated path is shaped the way it is.
+- ~~**The hardware adapter** is a declared seam with a stub behind it.~~ **IT IS
+  BUILT AND IT DRIVES A KEY** - this bullet was stale until 2026-08-06, and had
+  been contradicted by PLAN's own hardware column for two days. `okt run
+  00-sanity 01-protocol --hardware` is **147 passed, 0 failed, 19
+  skipped-with-reason in 837s** against a physical key.
+
+  What the run exercises, so the claim is bounded rather than a boast: selection
+  by sysfs (a real key chosen over the gadget by its `dummy_hcd` ancestry),
+  all four interfaces opened, the report-ID prepend, SEREMU NUL-stripping,
+  keyboard capture, and reboot-as-re-enumeration across **~30 restarts** - the
+  fixture relock, `03-wipe`, `04-provisioning`, config-mode entry and exit, and
+  the restore that reboots as its completion.
+
+  What it does NOT exercise, by construction: `setPlugged()` throws (a key needs
+  a hand on the cable), and anything gated `storage-files`, `image-snapshots`,
+  `device-host`, `full-wipe`, `fido-reset` or `client-access` skips - which is
+  every one of the 19.
+
+  **One caveat worth knowing before trusting a hardware number.** A
+  re-enumerating key races udev, so a reopen can hit `EACCES` on a node that
+  exists but has no rules applied yet - 34 to 42 times in an 840-second sweep.
+  That is now handled (a pre-flight `fs.access` and an all-or-nothing open), but
+  until 2026-08-06 it leaked handles and doubled the SEREMU stream, which
+  corrupted the console oracle intermittently and presented as flaky firmware.
+  Any hardware result recorded before that date was measured through it.
 - **Section 3's `/app/pgp-pqc` page**, and only that one. This bullet named
   `/app/encrypt` and `/app/decrypt` as well until 2026-08-06; both are driven in
   nw.js by `03-gui/14-gui-encrypt-decrypt`. Everything under pgp-pqc is proven
