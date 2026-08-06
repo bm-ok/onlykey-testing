@@ -4,92 +4,81 @@ The work list. [PLAN.md](PLAN.md) is the source of truth for *why* and carries
 the reasoning behind every row here; [README.md](README.md) is how to use what
 exists. This file is the order to do things in, and what each one needs.
 
-Ordered by what is unblocked and what unblocks the most, not by section number.
-Two rules shaped that order:
+**READ THE TABLE, NOT THE HEADINGS.** The headings below are numbered in the
+order they were written and each was written when its section was empty, so
+several still read as though their section is untouched. The table is what is
+open. And the two numbering schemes are not the same thing: a heading here is
+`§n`, the kit's own test directories are `test/0n-...`, and they do not line up -
+**TODO's §2 is the kit's section 1**, TODO's §1 is the kit's section 2. Each row
+below names its heading in words for that reason.
 
-- **The remaining pages go last.** `13-pgp-pqc` in particular - everything under
-  it is proven now, so it is a page-debugging job rather than a coverage gap,
-  and it is the one item here that cannot be finished without a browser in front
-  of a human.
-- **The large-response path went early** even though it was unglamorous, and it
-  is done. Everything returning more than 64 bytes had been testing it
-  accidentally and would have blamed its own feature. This used to say
-  "`OKGETRESPONSE` goes early"; there is no such mechanism - see PLAN's plane 1.
-
-**WHERE THE WORK ACTUALLY IS NOW.** Sections 1 and 2 are close to done and the
-headings below still read as if they are not, because each was written when its
-section was empty. What is genuinely open, in the order this file's own rule
-implies:
+**THE ORDER IS ASSIGNED, NOT DERIVED.** It used to be "what is unblocked and what
+unblocks the most", and that rule put the app last because it has no ancestor.
+The maintainer has assigned it first as of 2026-08-06, which overrides the rule
+rather than contradicting it - so do not reorder this table back on the strength
+of the old reasoning.
 
 | | what | why it is next |
 |---|---|---|
-| 1 | HMAC challenge-response (§2) | NOT "HMAC settings" - that half is already done by `11-cli-settings`. This is the Yubikey-style feature the old kit could not reach, and it needs two IPC verbs first |
-| 2 | `13-pgp-pqc` (§4) | **this** is the one that needs a browser in front of a human. Page debugging, not coverage |
-| 3 | section 4, the app (§5) | no ancestor anywhere; genuinely last |
-| — | **section 5, SECURITY (§6)** | PLANNED, after the sweep, by decision. Its two harness prerequisites - a recorded crash rather than an aborted run, and a positive control for every negative assertion - land BEFORE any test in it |
+| 1 | **section 4, the OnlyKey APP** (§5, "Section 4 - the OnlyKey app") | **ASSIGNED. Start here.** The one part of the kit with no ancestor in any kit, so unlike everything else on this list there is no file to read for what it should cover. §5 has what is known and, more usefully, what is not |
+| 2 | HMAC challenge-response (§2, "Section 1 - the protocol surface") | NOT "HMAC settings" - that half is already done by `11-cli-settings`. This is the Yubikey-style feature the old kit could not reach, and **it is not a test-writing job**: two IPC verbs have to be added to the emulator's protocol first |
+| 3 | `13-pgp-pqc` (§4, "Section 3 - the pages that are left") | the only page left, and the one item here that needs a browser in front of a human. Page debugging, not coverage |
+| — | **section 5, SECURITY** (§6) | PLANNED, after the sweep, by decision. Its two harness prerequisites - a recorded crash rather than an aborted run, and a positive control for every negative assertion - land BEFORE any test in it |
 | — | the International Travel Edition (§3) | DEFERRED until the kit is complete, by decision - a second BUILD, diffed against this one |
 
-**The two remaining pages used to share one row and must not**, because they are
-blocked on completely different things and merging them made the unblocked one
-look blocked. `13-pgp-pqc` needs a browser and a human. `18-gui-encrypt-decrypt`
-needed neither, and **it is now done in BOTH tiers** -
-`03-gui/08-pgp-encrypt-decrypt` (6 tests in 135s, `--isolate` 6/6 and
-`--reverse` green) and `03-gui/14-gui-encrypt-decrypt` (6 tests in a real
-Chromium, 107s with its session). So `13-pgp-pqc` is the only page left. The
-three things that used to stop the classic pages were all gone, and they held
-up:
+**Nothing else is open.** Section 2 is complete, 37 of 37 subcommands. Section 1
+has one row left and it is `OKFWUPDATE`, which is gated `emulated` and driven
+only to its interlocks on purpose - it is not work waiting to be done. Section 3
+is complete but for `13-pgp-pqc`. Everything below the table is either ticked, a
+finding, or debt that is recorded rather than scheduled.
 
-1. **A classic RSA key in RSA slots 1 and 2**, which `onlykey-pgp.js`'s `slotid()`
-   hardcodes (2 to sign, 1 to decrypt). Loaded and asserted about by
-   `01-protocol/19-rsa-keys`.
-2. **The tunnel carrying it.** `01-protocol/23-rsa-tunnel` drives OKSIGN and
-   OKDECRYPT through the WebAuthn transport with the kit's own client and checks
-   both answers against node:crypto.
-3. **The section-2 prerequisite, which dissolved.** It came from `07-pgp-keys`'
-   note that a key must be loaded by `onlykey-cli setpqc` - true for a COMPOSITE
-   key, false for classic RSA, which goes in over the vendor interface with no CLI
-   anywhere. **Now measured rather than argued**: `08-pgp-encrypt-decrypt` loads
-   both slots itself and drives all five modes with no CLI on the machine's mind
-   at all. PLAN's build sheet is corrected.
+One rule from the old ordering is worth keeping because it corrects a myth that
+cost an hour whenever it resurfaced: **the large-response path went early** even
+though it was unglamorous. Everything returning more than 64 bytes had been
+testing it accidentally and would have blamed its own feature. This file used to
+say "`OKGETRESPONSE` goes early"; there is no such mechanism - see PLAN's plane 1
+and the premises table below.
 
-**Five files landed on 2026-08-05**, clearing four rows off the top of this table:
+**What landed on 2026-08-05/06, kept because each row records what it cost
+rather than that it happened.** Six files in one session, which is why several
+headings below still describe a world that ended that night:
 
-- **RSA key handling** → `01-protocol/19-rsa-keys`, 7 tests in 104s, `--isolate`
-  7/7 and `--reverse` green. Every key kind the firmware stores now has coverage
-  - the six ECC `KEYTYPE_*` values by `14-stored-keys` and RSA, which is not one
-  of them, by this file. `18-gui-encrypt-decrypt`'s prerequisite is met: the pair
-  of slots `onlykey-pgp.js` hardcodes is loaded, used and asserted about. See §2.
-- **The second profile** → `01-protocol/20-second-profile`, 3 tests in 39s, both
-  gates green. See §3.
-- **Self-destruct** → `01-protocol/21-self-destruct`, 2 tests in 63s, gated on
-  `full-wipe`. See §3.
-- **The RSA slot tail** → `01-protocol/22-rsa-slot-tail`, 2 tests, gated on
-  `storage-files`. Settled a DECIDE row by measurement:
-  [FINDING-rsa-slot-tail.md](FINDING-rsa-slot-tail.md).
-- **Classic RSA over the tunnel** → `01-protocol/23-rsa-tunnel`, 2 tests + 1
-  gated-off, which is prerequisite 2 above and turned up
-  [FINDING-rsa4096-overflow.md](FINDING-rsa4096-overflow.md).
+| file | tests | what it settled |
+|---|---|---|
+| `01-protocol/19-rsa-keys` | 7 in 104s | RSA, the seventh key kind outside the six-value `KEYTYPE_*` enum. Every key kind the firmware stores now has coverage |
+| `01-protocol/20-second-profile` | 3 in 39s | the first time either kit entered the second profile. It sees profile 1's slot data, deliberately |
+| `01-protocol/21-self-destruct` | 2 in 63s | gated `full-wipe`. The secret does not come back even after re-provisioning with the same PINs |
+| `01-protocol/22-rsa-slot-tail` | 2 | gated `storage-files`. [FINDING-rsa-slot-tail.md](FINDING-rsa-slot-tail.md) |
+| `01-protocol/23-rsa-tunnel` | 2 + 1 gated off | classic RSA over the WebAuthn transport. [FINDING-rsa4096-overflow.md](FINDING-rsa4096-overflow.md) |
+| `03-gui/08-pgp-encrypt-decrypt` | 6 in 135s | the encrypt/decrypt pages' LIBRARY tier, all five `_$mode()` modes |
+| `03-gui/14-gui-encrypt-decrypt` | 6, 107s with its session | the same five through the PAGES, in nw.js over the USB gadget |
+| `02-cli/16-cli-key-files` | 3 in 35s | `loadpqc` / `loadkey` on their accepting paths. Section 2 finished |
 
 So **both PINs this kit provisioned on every run and had never entered are now
-entered**, §3's remaining row is a deferred second BUILD rather than a test, and
-three findings are written up for upstream - the two above plus
-[FINDING-cli-exit-codes.md](FINDING-cli-exit-codes.md).
+entered**, the International Travel Edition is a deferred second BUILD rather
+than a test, and four findings are written up for upstream - the two above plus
+[FINDING-cli-exit-codes.md](FINDING-cli-exit-codes.md) and the RUN_MAX/exit-code
+pair under "Kit-side items".
 
-**And the classic PGP pages landed the same night, in BOTH tiers**, off the top
-of the table above. `03-gui/08-pgp-encrypt-decrypt` (6 tests in 135s, both gates
-green) drives `startEncryption` and `startDecryption` through all five of
-`_$mode()`'s modes headless; `03-gui/14-gui-encrypt-decrypt` (6 tests, 107s with
-its session) drives the same five through `/app/encrypt` and `/app/decrypt` in a
-real Chromium over the USB gadget. Both check their output against openpgp.js
-from the other side of the same key. See §4, and the premises they settled in the
-table below.
+**`18-gui-encrypt-decrypt` used to share a row with `13-pgp-pqc` and that was
+the mistake worth remembering**, because merging two items blocked on different
+things made the unblocked one look blocked for weeks. It needed a browser and a
+human only in its second half; its first half needed neither and nothing had
+tried. Both halves are now done and only `13-pgp-pqc` is left.
 
 **When a file lands, update its section's `last run` in [PLAN.md](PLAN.md)'s
 counts table.** The emulated and hardware columns carry separate dates because
-they drift apart, and a count with no date reads as current when it is not. Both
-were single sweeps as of 2026-08-05; section 3 is the one most exposed to drift,
-since its browser tier depends on nw.js and the onlykey.github.io checkout rather
-than on anything this repo pins.
+they drift apart, and a count with no date reads as current when it is not. The
+emulated column is a whole-tree sweep as of 2026-08-06 01:22Z (350 passed, 1459s);
+the hardware column is 2026-08-05 16:24Z and has seen none of the files in the
+table above. Section 3 is the one most exposed to drift, since its browser tier
+depends on nw.js and the onlykey.github.io checkout rather than on anything this
+repo pins.
+
+**And watch the run budget when a file lands.** `RUN_MAX` is 30 minutes and the
+tree takes 1459s - 81% of it. That is not a lot of room, and the last time it ran
+out nobody noticed for hours, because a per-file cost is invisible against a
+per-run cap. See the row under "Kit-side items".
 
 Trap that does NOT apply here, worth knowing because the old kit's notes are
 full of it: slot collisions between files. `onlykey-alpha-testing` lost whole
@@ -992,10 +981,78 @@ Two things that are not optional for any of them, both already measured:
       halves are told apart by argument size alone - 32 bytes is `hooks.ecdh`,
       1088 is `hooks.mlkemDecaps`. See PLAN.md's pgp-pqc block for the rest.
 
-## 5. Section 4 - the OnlyKey app
+## 5. Section 4 - the OnlyKey app. **ROW 1, ASSIGNED 2026-08-06**
 
-- [ ] **Never driven from a harness at all**, by this kit or the old one. The
-      one part with no ancestor, which is why it is last.
+**FIRST: there are TWO "apps" in this tree and they are different codebases.**
+This is the trap for anybody arriving at this row, because section 3 is also
+called "the app" in half the prose here.
+
+| | section 3's | section 4's |
+|---|---|---|
+| checkout | `onlykey/onlykey.github.io` | `onlykey/OnlyKey-App` |
+| what it is | a web app served by its own express server on port 3000, opened in nw.js | a PACKAGED nw.js app (`manifest_version: 2`, Chrome-App style), loaded from `build/` |
+| how it reaches the device | WebAuthn (`navigator.credentials.get`) through the vendor tunnel | **`chrome.hid`** - the Chrome Apps HID API, `app/scripts/onlyKey/OnlyKeyComm.js` |
+| nw.js | the kit's own 0.114.0-sdk | its own dependency, `nw ^0.71.1` |
+| covered | 84 tests, both tiers | nothing |
+
+Everything the kit knows about driving nw.js (`lib/gui.js`) was built for the
+first and has never been pointed at the second.
+
+- [ ] **Section 4, and it is NOT true that there is no ancestor** - that is what
+      this row said until somebody looked, and the correction is most of what a
+      first attempt needs. It is true of THIS kit and of `onlykey-alpha-testing`.
+      **The App ships its own harness**, in `OnlyKey-App/test/`:
+
+      | file | what it is |
+      |---|---|
+      | `driver.js` | selenium-webdriver pointed at **nw.js's bundled chromedriver**, with `nwapp=<repo>/build` |
+      | `startup-test.js` | mocha + chai: the disconnected dialog, the working dialog |
+      | `configure-slot-test.js` | a whole slot-configuration flow, up to asserting the OKSETSLOT bytes |
+
+      **And it proves the UI against a MOCK, not a device**, which is precisely
+      the gap this kit would fill. Its tests call `chromeHid.onDeviceAdded.
+      mockDeviceAdded()`, push canned replies with `chromeHid.mockResponse([null,
+      msg])`, and read what the app sent back out of `chromeHid._sent`. So the
+      wiring is covered and the device never is - the mirror image of every other
+      section here, where the device is covered and the page was not.
+
+      Two consequences, and they point in opposite directions:
+
+      1. **`chromeHid._sent` is an instrumentation seam that already exists**,
+         the same shape as pgp-pqc's `window.__pgpPqcTestHooks`. A test can read
+         exactly what the app put on the wire without patching anything.
+      2. **A mock that answers is a mock that can drift.** Its canned
+         `'UNLOCKEDv0.2-beta.3'` and hand-written slot list are a firmware
+         version this kit does not run. Driving the same flows against the
+         emulator is what would catch that, and is the reason to bother.
+
+      **THE REACHABILITY QUESTION IS ALREADY ANSWERED, which is the single most
+      useful thing here.** `build/manifest.json` declares `usbDevices` for
+      **`{vendorId: 7504, productId: 24828}` = `0x1D50:0x60FC`** - and that is
+      exactly what the emulator's gadget presents (`lib/gadget.js`'s
+      `ONLYKEY_VID`/`ONLYKEY_PID`). So the App can see the emulated device with
+      no change to either side, and section 4 needs `client-access` the same way
+      section 2 does. The other declared pair, `{5824, 1158}` = `0x16C0:0x0486`,
+      is the Teensy raw-HID identity. **READ, NOT MEASURED** - nothing has yet
+      launched the App against the gadget.
+
+      What is NOT known, and should be established before writing tests:
+
+      - Whether `chrome.hid` works under this nw.js at all, and whether the app
+        must be built (`gulp build` → `build/`) before every run or whether the
+        checked-in `build/` is current.
+      - Whether to drive it over **CDP** the way `lib/gui.js` already does, or to
+        adopt selenium as the App's own tests do. CDP keeps the kit
+        dependency-free and reuses the session machinery; selenium is the path
+        the App's authors took and their tests would keep working. Decide this
+        first - it shapes every file after it.
+      - Whether a packaged app and the kit's own device host can hold the gadget
+        at once. Section 3's browser tier proves a browser and the kit can share
+        it (different nodes: `/dev/hidg*` device side, `/dev/hidraw*` host side),
+        but nothing has tried it with `chrome.hid`.
+      - Whether the App has a landing state that touches no device, the way
+        `tools/nwjs`'s page does. If not, the "device up and unlocked BEFORE
+        anything opens" rule from section 3 has nowhere to stand.
 
 ## 6. Section 5 - security. PLANNED, NOT BUILT, AFTER THE SWEEP
 

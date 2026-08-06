@@ -397,6 +397,93 @@ proves otherwise. That belongs to a production walk.
 
 ```
 
+## Section 3's browser tier: the session, and how to drive a page
+
+Everything here was learned by driving `/app/encrypt` and `/app/decrypt`, and
+none of it is guessable from the web app's source.
+
+### The session is started and stopped by visible test FILES
+
+`10-session` starts the express server and nw.js; `19-stop` stops both and
+asserts the ports came free. Nothing between them starts anything. The handle
+lives in `lib/gui-session-holder.js`, which survives from file to file in the
+MODULE CACHE - the runner clears the harness registry between files, so a
+module-level variable in a test file would not.
+
+**So a browser-tier file cannot be run on its own.** Run the section:
+
+```sh
+node bin/okt.js run 03-gui
+```
+
+or, to iterate on one file without paying for the whole section, name the
+session files around it - one run, one session, three targets:
+
+```sh
+node bin/okt.js run test/03-gui/10-session.test.js \
+                   test/03-gui/14-gui-encrypt-decrypt.test.js \
+                   test/03-gui/19-stop.test.js
+```
+
+Running one browser file alone gets a clear error ("no GUI session is running")
+rather than a hang. Running `--isolate` over one would start a browser and a
+server with nothing to stop them, so **the browser-tier files are outside both
+order gates by design** - `10-session`, `11`, `12`, `14`, `19-stop`. They are not
+isolation debt and should not be added to it.
+
+### `page.close()` closes the WINDOW - and it did not always
+
+It used to close the debugger socket and leave the tab running. Nothing noticed
+for weeks because no file had ever opened a SECOND page in one session, and
+`11-password-generator`'s "closes its window" test asserts the opposite in its
+own comment.
+
+**It does not present as a leak. It breaks the next page.** Chromium allows one
+WebAuthn request at a time **per browser**, not per tab, so an abandoned tab whose
+startup OKCONNECT is still in flight makes the next page's handshake fail inside
+Chromium with `OperationError: A request is already pending.` The page swallows
+that, its output box never fills, and what the test sees is a device that was
+never contacted - reported, eventually, by the inactivity watchdog pointing at the
+device rather than at the browser. The only account of the real cause is the
+page's own console, which is why `page.console` is kept and why a failure message
+should print its tail.
+
+So, for any file that opens more than one page:
+
+- **wait for each page's handshake before doing anything with it.** Every app
+  page starts an OKCONNECT as it LOADS; `#header_messages` gets "Secure
+  Connection Established" with the firmware version when it lands. Waiting for
+  that is both the fix and an assertion worth having.
+- **close each page before opening the next**, in a `finally`.
+- and note what this means for claims: in a browser, "this mode needs no device"
+  is true of the OPERATION and false of the PAGE. Assert on what the device was
+  asked to DO - a primed confirmation count - not on device silence.
+
+### Driving the encrypt and decrypt pages specifically
+
+Four mechanics, each of which cost time to find:
+
+| | |
+|---|---|
+| `window.$` does not exist | `app.js` sets only `window.jQuery`; the plugin system passes `$` around as a dependency. Reaching for `$` is a TypeError that arrives as an unhelpful "page threw" |
+| the recipients field is not an `<input>` | `jquery.tokenizer.js` replaces `#pgpkeyurl` with a contenteditable span, hides the real one, and writes `escape(value)` into it. Drive it with `jQuery("#pgpkeyurl").data("tokenizer").add(key)`, which is the call the widget itself makes on blur |
+| ...and that escaping is load-bearing | it is why `startEncryption` has a `slice(0,11) == '-----BEGIN%'` branch. It is also the only way an armored key fits a field that strips newlines from `.value` |
+| the mode comes from the radio, via `setup()` | each `#action` radio re-runs `page.setup()` on `change`, which re-reads `_$mode()`. Set `.checked` AND dispatch `change`. There is no other way in: `page.okpgp` lives in the plugin's closure and is not published on `window` the way `pgp-pqc`'s `__pgpPqcTestHooks` is |
+
+And both pages write their result back into the **same** `#message` textarea the
+input came from, so "it worked" is "the box CHANGED", not "the box is non-empty".
+
+The two constraints that are not optional for any page in this app:
+
+- **Serve from `localhost`, never `127.0.0.1`.** WebAuthn refuses an IP as an
+  rpId, the pages swallow the error, and the only symptom is an output box that
+  never fills. The RPID is also folded into DERIVED keys, so a cross-check must
+  ask the kit for the same rpId the browser will use. (Stored-key operations -
+  the RSA slots - are unaffected by which rpId is used.)
+- **Device up and unlocked before any page opens.** A page whose startup
+  OKCONNECT times out makes Chromium raise a NATIVE WebAuthn dialog that no CDP
+  command can dismiss, and the session is wedged until restarted.
+
 ## Things the firmware does that will surprise you
 
 All measured, all load-bearing, all commented at the point that depends on them:
@@ -516,9 +603,16 @@ Four limits of snapshot restore, none of them bugs:
 test/00-sanity/     built    no device at all - the kit's own oracles
 test/01-protocol/   built    Node over the wire protocols
 test/02-cli/        built    the CLI through the Python venv
-test/03-gui/        built    the web app: 00-09 headless, 10+ in nw.js
-test/04-app/        stub     the OnlyKey app, in its own nw.js
+test/03-gui/        built    the WEB app (onlykey.github.io): 00-09 headless, 10+ in nw.js
+test/04-app/        stub     the OnlyKey APP (OnlyKey-App), a packaged nw.js app
 ```
+
+**Sections 3 and 4 are different codebases, and both get called "the app".**
+Section 3 is `onlykey.github.io`, served by express and opened in the kit's own
+nw.js, reaching the device over the WebAuthn tunnel. Section 4 is
+`OnlyKey-App`, a packaged Chrome-App-style nw.js application that reaches the
+device with `chrome.hid`. Nothing in `lib/gui.js` has ever been pointed at the
+second. See TODO's §5.
 
 **Only section 4 is still a stub, and this block said otherwise until
 2026-08-05** - it was written when sections 2 and 3 were empty and nothing
