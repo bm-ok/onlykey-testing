@@ -3,9 +3,14 @@
 Every defect this kit has found, with its reporting status. **The status column
 is the reason this file exists**: the write-ups themselves say what was found and
 how it was measured, and each is linked from the TODO row that produced it, but
-until 2026-08-06 nothing anywhere recorded whether a finding had been SENT. All
-six were unreported and the repo could not say so - which reads, to a cold
-reader, exactly like a repo whose findings had all been filed.
+until 2026-08-06 nothing anywhere recorded whether a finding had been SENT.
+Every one of them was unreported and the repo could not say so - which reads, to
+a cold reader, exactly like a repo whose findings had all been filed.
+
+(Deliberately not written as a count. The first version of this paragraph said
+"all six", which was true for about four hours - the seventh landed the same
+day. A number here has to be maintained in step with the table below it, and
+this file exists because unmaintained status claims are the problem.)
 
 **Nothing here has been reported yet.** That is a fact about this repo, not a
 judgement about the findings.
