@@ -1153,6 +1153,24 @@ this work here rather than against a key.
 - unknown vendor ids reaching the CTAPHID stack, which the dispatcher's
   `default:` hands to `recv_fido_msg()` - a parser reached by a path its callers
   did not intend is the classic shape
+- **the KEYBOARD interface, which is the largest item in the section and the one
+  with the clearest argument.** `process_setreport()` (okcore.cpp:7638) is a
+  third command channel beside the vendor interface and the tunnel: slot
+  selection, HMAC-SHA1 challenge-response, Yubico OTP keys, a device-wide
+  TYPESPEED write. It is guarded by `unlocked`, `check_crc()` and a
+  `CRYPTO_AUTH` interlock, and it is inert while locked - but it reaches
+  `set_private()` and `recvmsg()` DIRECTLY, so it never passes the
+  `case OKSETPRIV:` guard where config mode and the user-slot allow-list live.
+  The firmware's own comment says as much. It survives on production keys where
+  SEREMU does not, and it is untested because the harness cannot reach it -
+  the IPC verbs the HMAC row needs are the same ones this needs. **Unexamined
+  for a structural reason rather than a considered one**, which is the same
+  shape as the OnlyKey App's tests running against a mocked `chrome.hid`, and
+  the reason both belong on a list rather than in somebody's head. TODO carries
+  the detail and the one open question, marked UNVERIFIED: whether a local
+  unprivileged process reaches a keyboard interface more easily than `0xFFAB`,
+  per OS. The web path is closed - browsers refuse keyboard-usage devices in
+  WebHID - so the local one is the unknown
 - refusal paths asserted WITH controls: every "Error not in config mode" and
   "Error device locked" is a security property arriving where a client sees it,
   and each is worth one test that proves the operation would otherwise have

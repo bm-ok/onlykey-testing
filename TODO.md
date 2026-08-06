@@ -21,7 +21,7 @@ of the old reasoning.
 | | what | why it is next |
 |---|---|---|
 | 1 | **section 4, the OnlyKey APP** (§5, "Section 4 - the OnlyKey app") | **ASSIGNED. Start here.** The one part of the kit with no ancestor in any kit, so unlike everything else on this list there is no file to read for what it should cover. §5 has what is known and, more usefully, what is not |
-| 2 | HMAC challenge-response (§2, "Section 1 - the protocol surface") | NOT "HMAC settings" - that half is already done by `11-cli-settings`. This is the Yubikey-style feature the old kit could not reach, and **it is not a test-writing job**: two IPC verbs have to be added to the emulator's protocol first |
+| 2 | HMAC challenge-response (§2, "Section 1 - the protocol surface") | NOT "HMAC settings" - that half is already done by `11-cli-settings`. This is the Yubikey-style feature the old kit could not reach, and **it is not a test-writing job**: two IPC verbs have to be added to the emulator's protocol first. Those same two verbs are the only thing standing between the kit and §6's keyboard-interface surface, so this row buys a feature test and an attack surface at once |
 | 3 | `13-pgp-pqc` (§4, "Section 3 - the pages that are left") | the only page left, and the one item here that needs a browser in front of a human. Page debugging, not coverage |
 | — | **section 5, SECURITY** (§6) | PLANNED, after the sweep, by decision. Its two harness prerequisites - a recorded crash rather than an aborted run, and a positive control for every negative assertion - land BEFORE any test in it |
 | — | the International Travel Edition (§3) | DEFERRED until the kit is complete, by decision - a second BUILD, diffed against this one |
@@ -629,6 +629,13 @@ And the two carried-over rows that came over only partly:
       So the work is: add the two verbs to the IPC and the device host, expose
       them on the Device API, then write the test. Estimate is small and it is all
       in this project's own code rather than under `onlykey/`.
+
+      **AND IT UNBLOCKS TWO ROWS, NOT ONE**, which is most of the argument for
+      doing it. The same seam is the prerequisite for §6's keyboard-interface
+      security row - `process_setreport()` is reached by the same control
+      transfers, and it is a THIRD command channel that bypasses the vendor
+      dispatcher's config-mode gate entirely. So this plumbing buys a feature test
+      and an attack surface at once, and neither can start without it.
 - [x] **RSA key handling** - the other half of old `12-non-pqc-regression` →
       `01-protocol/19-rsa-keys`, 7 tests in 104s, first run green, `--isolate`
       7/7 and `--reverse` green. **Every key kind the firmware stores now has
@@ -1158,6 +1165,72 @@ than against a key. See EXPLAINER.
       "Error device locked" is a security property arriving where a client sees
       it, and each is worth one test proving the operation would otherwise have
       succeeded
+- [ ] **THE KEYBOARD INTERFACE AS ATTACK SURFACE, and it is the biggest single
+      row in this section.** `process_setreport()` (okcore.cpp:7638) is a THIRD
+      command channel beside the vendor interface and the WebAuthn tunnel, and it
+      is the least documented of the three. All of the following is **verified by
+      reading the source**, not measured - nothing can measure it until the IPC
+      verbs below exist.
+
+      **What it accepts.** Slot selection from `keyboard_buffer[64]` - `1`, or
+      `3..27` - and a write-or-wipe request at `keyboard_buffer[45]` (`5` or
+      `0`). Beyond the HMAC-SHA1 challenge-response this is named for, the same
+      handler sets **Yubico OTP keys**, writes **`addchar`** per slot, and
+      changes **TYPESPEED device-wide** from `CFGFLAG_PACING_*` - a global
+      setting written from the keyboard interface.
+
+      **What guards it, stated precisely, because two of the three are easy to
+      describe wrongly:**
+
+      | guard | what it actually does |
+      |---|---|
+      | `initialized && !unlocked` → early return | **inert while locked**, confirmed. Note it does NOT fire on an UNINITIALIZED device - that case is caught instead by the dispatch condition's own `initialized && unlocked` |
+      | `check_crc(keyboard_buffer)` | a well-formedness check on the report |
+      | `CRYPTO_AUTH` | **an interlock, not an authorization.** The test is `if (!check_crc(...) \|\| CRYPTO_AUTH) return;` - it REFUSES while a crypto operation is pending. It is not a confirmation requirement, and reading it as one would mis-scope every test here |
+
+      **THE PART WORTH THE WHOLE ROW: this path SYNTHESISES vendor messages and
+      injects them past the vendor dispatcher's guards.** It fills `recv_buffer`
+      with `OKSETPRIV` / `OKSETSLOT` / `OKWIPESLOT` and calls `set_private()` or
+      `recvmsg(1)` **directly** - so it never passes `case OKSETPRIV:`
+      (okcore.cpp:451), which is where `configmode == true` and the user-slot
+      allow-list live. **Config mode does not gate this surface.** That is not an
+      inference: the firmware's own comment at okcore.cpp:458-465 says HMAC
+      (129/130) and derivation (128/132) "use other paths that call
+      set_private() directly and bypass this dispatch".
+
+      And one of the things it can write is **`hmac_challengemode`** - the flag
+      that makes an HMAC slot require NO button press (`recv_buffer[7] = 1; //
+      Authlite no button press required`). So a surface that bypasses config mode
+      can also remove a user-presence requirement. Whether that composes into
+      anything is exactly what this row is for.
+
+      **WHY IT IS UNTESTED IS STRUCTURAL, NOT A JUDGEMENT.** The harness cannot
+      reach it: this channel is HID control transfers (`SET_REPORT` 0x0921 /
+      `GET_REPORT` 0x01a1), the emulator ports both and the addon exports
+      `kbdSetReport`/`kbdGetReport`, and what does not exist is an IPC verb - so
+      `device.send(IFACE.KEYBOARD, …)` cannot reach it, because an interrupt OUT
+      report is not a control transfer. Nobody assessed this as low risk; nobody
+      could assess it at all. **Same shape as the OnlyKey App being tested
+      against a mock**: unexamined for a structural reason rather than a
+      considered one, which is the pattern this section exists to break.
+
+      **And it outlives the debug console.** A production key ships without
+      SEREMU - that is PRODUCTION.md's whole argument - while the keyboard
+      interface ships on every build, because it is the device's primary
+      function. So this surface is present exactly where the console is not.
+
+      **OPEN QUESTION, to answer when the section is built - UNVERIFIED, and it
+      is the one that decides how much this matters:** does a local unprivileged
+      process reach a keyboard interface more easily than it reaches `0xFFAB`,
+      and does that differ per OS? The WEB path is closed - browsers refuse
+      keyboard-usage devices in WebHID - so the browser cannot be the vector.
+      The local one is the unknown, and it is an OS-permissions question rather
+      than a firmware one, so it wants measuring on each platform rather than
+      reasoning about.
+
+      **Prerequisite: the two IPC verbs**, which is the same prerequisite the
+      HMAC feature test has - see §2. One piece of plumbing unblocks a coverage
+      row and a security row, which is most of the argument for doing it.
 
 ---
 
