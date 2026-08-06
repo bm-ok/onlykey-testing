@@ -197,14 +197,13 @@ describe('app keys', {
      * second. This sleep was buying the App time to finish - which is why
      * removing it failed deterministically and why no durability theory fit.
      *
-     * KEPT, DELIBERATELY, AND NOT YET RE-MEASURED. With the loop fixed, this is
-     * expected to be unnecessary, but that has not been driven against the App
-     * yet - it needs the gadget, and the gadget cannot be up while a physical
-     * key is attached. Removing it on the strength of the reasoning above would
-     * be exactly the move this kit keeps warning about. Drop it, run the file,
-     * and delete this paragraph when it passes without it.
+     * REMOVED 2026-08-06, AFTER MEASURING RATHER THAN AFTER REASONING. With the
+     * loop fixed the file passes with no settle at all - three consecutive runs,
+     * the same standard the 6s was originally established by. The evidence that
+     * the loop was the whole story is in the run logs either side of the fix:
+     * before it, both acks were logged at the SAME MILLISECOND (12:06:26.045),
+     * because it was one report returned twice; after it they are ~600ms apart.
      */
-    await device.sleep(6000, { signal });
 
     await device.restart({ signal });
     await device.ensureUnlocked(PINS.primary, { signal });
