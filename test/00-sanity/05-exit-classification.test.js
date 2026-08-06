@@ -20,6 +20,7 @@
 
 const { describe, it } = require('../../lib/harness');
 const { classifyExit, FATAL, MAX_MAP_RETRIES } = require('../../lib/device/emulated');
+const { watchdogVerdict, EXIT } = require('../../lib/runner');
 
 const EXIT_MAPFAIL = 7;
 
@@ -127,6 +128,58 @@ describe('classifying a dead device host', { device: false }, () => {
     assert.equal(spent.fatal, FATAL.MAP_FAILED,
       'a spent mapping retry must not be reported as a firmware crash');
   });
+
+  it('reports a fired watchdog as EXIT.WATCHDOG, wherever it fired', async ({ assert }) => {
+    /*
+     * THE CASE THAT COST A 900-SECOND RUN ITS VERDICT. A run-max that fired
+     * while a device host was booting was reported as exit 5 - "the device host
+     * died for a reason that is not the firmware's fault" - because the boot
+     * path fell through its `|| { code: EXIT.HOST_DIED }` fallback instead of
+     * asking whether a watchdog had already spoken. The sentinel's own reason
+     * string named the watchdog, so the sentence was right and the code
+     * contradicted it, which is worse than both being wrong: README's whole
+     * claim is that the code says what kind of problem it is WITHOUT reading
+     * anything else, and every consumer of this kit rests on that.
+     *
+     * All three watchdogs, because the boot path is reachable from any of them
+     * and only one of them was ever observed doing it.
+     */
+    for (const kind of ['run-max', 'inactivity', 'per-test']) {
+      const verdict = watchdogVerdict({ fired: { kind, reason: 'because', pending: [] } });
+      assert.equal(verdict.code, EXIT.WATCHDOG,
+        `a ${kind} watchdog reported ${verdict.code}, not ${EXIT.WATCHDOG} - a watchdog ` +
+        'hidden behind another code is a run whose verdict cannot be read off the exit');
+      assert.includes(verdict.reason, `${kind} watchdog`);
+    }
+  });
+
+  it('says what a watchdog was WAITING FOR, not only that it fired', async ({ assert }) => {
+    /*
+     * EXPLAINER: "a watchdog must report where it was blocked ... because
+     * otherwise a stalled transport and a genuinely slow device look the same,
+     * which is the failure mode this whole kit is designed to eliminate." The
+     * pending list is that report, and it is easy to drop while refactoring the
+     * message, since nothing else reads it.
+     */
+    const verdict = watchdogVerdict({
+      fired: { kind: 'inactivity', reason: 'no progress for 31s', pending: ['waitHid(vendor)', 'log /UNLOCKED/'] },
+    });
+
+    assert.includes(verdict.reason, 'pending: waitHid(vendor); log /UNLOCKED/');
+  });
+
+  it('has no verdict when no watchdog fired, so the device gets to speak',
+    async ({ assert }) => {
+      /*
+       * The other direction, and the reason this is a function rather than a
+       * flag: a null here is what lets a firmware crash report as exit 2. If it
+       * returned a watchdog verdict unconditionally, every crash would be
+       * relabelled as a timeout.
+       */
+      assert.equal(watchdogVerdict({ fired: null }), null);
+      assert.equal(watchdogVerdict({}), null);
+      assert.equal(watchdogVerdict(null), null);
+    });
 
   it('has a verdict for an exit nobody anticipated', async ({ assert }) => {
     /*

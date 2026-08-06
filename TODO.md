@@ -1137,21 +1137,40 @@ test something different from what the file is for.
 
 ## Kit-side items from 2026-08-05, all small and all otherwise unrecorded
 
-- [ ] **THE WHOLE TREE NO LONGER FITS IN `RUN_MAX`, and the abort reports the
-      WRONG EXIT CODE. Two things, one run, and the second is the worse one.**
-      Measured 2026-08-05 22:25Z, and it is the maintainer's call which way to go.
+- [x] **THE WHOLE TREE OUTGREW `RUN_MAX`, AND HAD ALREADY DONE SO BEFORE THE FILE
+      THAT REVEALED IT.** Raised to 30 minutes on 2026-08-05, with the
+      measurements in `lib/config.js` beside the number so it reads as a ceiling
+      rather than a guess.
 
-      **One: the budget.** `TIMEOUTS.RUN_MAX` is 900s. The 17:35Z full sweep took
-      879s, so the headroom was twenty-one seconds and nobody knew that was the
-      margin. `03-gui/08-pgp-encrypt-decrypt` costs 135s, so the next full run was
-      cut off at 903s with **225 passed, 0 failed** and section 2 unfinished.
-      Nothing failed. The choices are to raise `RUN_MAX`, to accept that the tree
-      is measured section by section (which is what PLAN's rows now do), or to make
-      the budget per-section rather than per-run. Raising it silently is the one
-      option that is wrong, because the watchdog is there to bound a wedged run and
-      15 minutes was chosen rather than defaulted.
+      **The first version of this row blamed the wrong file, which is worth
+      keeping because the correction is the finding.** It said
+      `03-gui/08-pgp-encrypt-decrypt`'s 135s spent the 21s of headroom left by the
+      879s sweep. Wrong: that sweep's section 1 was **367s for 96 tests**, and the
+      five files that landed at 21:02Z took it to **707s for 112**. So the tree
+      needed ~1217s the moment `19-rsa-keys`..`23-rsa-tunnel` landed - **over the
+      cap by five minutes, hours before the new file existed.** Nobody saw it
+      because nobody ran the whole tree afterwards, which PLAN's own counts note
+      says in as many words ("Neither adapter has run the whole tree since").
 
-      **Two: a run-max that fires DURING A BOOT is reported as exit 5, not 3.**
+      **A per-file cost is invisible against a per-RUN cap.** Each of those six
+      files was measured, green and cheap on its own; nothing in the workflow adds
+      them up, so the tree broke by accumulation with every individual step
+      correct. That is the argument for the eventual shape:
+
+      - [ ] **Make the budget per-SECTION rather than per-run.** DEFERRED by
+            decision, not forgotten. A whole-run cap has to be resized every time
+            the tree grows and goes stale silently in between, which is exactly
+            what happened here; a per-section cap is bounded by the section's own
+            content and a section that doubles is a thing somebody notices. Also
+            the honest shape for `--isolate` and `--reverse`, which are per-file
+            and have no run-level meaning at all.
+
+      Measured per section (each from a run, not arithmetic): sanity <1s,
+      `01-protocol` 707s, `02-cli` 435s, `03-gui` 211s, `04-app` ~2s - **~1356s,
+      22.6 minutes**. 30 minutes is 1.33x that. Re-measure rather than doubling
+      when it next binds, and note that INACTIVITY (30s, no-progress) is what
+      actually catches a wedge - RUN_MAX only bounds a wedge that keeps talking.
+- [ ] **A run-max that fires DURING A BOOT is reported as exit 5, not 3.**
       This one is a defect regardless of which way the first is settled, and the
       code says so itself. `deviceVerdict()` returns null when a watchdog has
       fired, with the comment "classifying that as an external kill would hide the
