@@ -19,7 +19,7 @@ wearing the present tense - and the two adapters drift apart at different rates.
 | section 1 | 112 passed, 0 failed, 1 skipped | 2026-08-06 02:16Z | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
 | section 2 | 104 passed, 0 failed (gadget) | 2026-08-06 02:16Z | skipped - `client-access` | n/a |
 | section 3 | 84 passed, 0 failed (headless 56 + browser 28) | 2026-08-06 02:16Z | n/a - both tiers drive the emulator by design | n/a |
-| section 4 | 11 passed, 0 failed | 2026-08-06 03:34Z | n/a - needs `client-access`, the gadget | n/a |
+| section 4 | 15 passed, 0 failed | 2026-08-06 04:13Z | n/a - needs `client-access`, the gadget | n/a |
 | **whole tree** | **353 passed, 0 failed, 2 skipped** in 1489s | 2026-08-06 02:16Z | **118 passed, 9 skipped-with-reason** | 2026-08-05 16:24Z |
 
 **THE WHOLE-TREE ROW PREDATES SECTION 4 AND NO LONGER SUMS**, said here rather
