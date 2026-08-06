@@ -311,7 +311,7 @@ describe('onlykey-cli, the slot and key endpoints', {
         `in config mode the device answered: ${JSON.stringify(wiped.said)}`);
     });
 
-  it('`setpqc` reports success for a load the device refused',
+  it('`setpqc` reports the refusal rather than claiming success',
     async ({ device, assert, signal, log, skip }) => {
       needCli({ skip });
       await outOfConfigMode(device, signal);
@@ -320,20 +320,25 @@ describe('onlykey-cli, the slot and key endpoints', {
        * SURFACE: vendor - survives into a production walk, and this is exactly
        * the kind of disagreement that surface exists to catch.
        *
-       * The device refuses the load three times, once per chunk of the 160-byte
-       * blob - "Error not in config mode" - and `setpqc` prints "Loaded
-       * composite PQC PGP key (160 bytes) into RSA1" and exits 0 regardless. It
-       * never reads the replies. So a user follows the documented procedure,
-       * sees a success message, and has an empty slot.
+       * THIS TEST USED TO ASSERT THE OPPOSITE, and the switch is the finding
+       * closing rather than the behaviour drifting. As written it said "`setpqc`
+       * reports success for a load the device refused": the device refuses each
+       * of the three chunks of the 160-byte blob with "Error not in config
+       * mode", and the CLI printed "Loaded composite PQC PGP key (160 bytes)
+       * into RSA1" and exited 0 without ever reading a reply. A user followed
+       * the documented procedure, saw success, and had an empty slot - with no
+       * way to find out, because okcrypto_getpubkey() has no KEYTYPE_PQC_PGP
+       * branch and a composite slot cannot be read back.
        *
-       * This is a CLIENT fault rather than a firmware one: the device said no,
-       * clearly, three times. 05-composite-load drives the same command from
-       * inside config mode and it works - so the load path is fine and only the
-       * reporting is wrong.
+       * Its own failure message asked whoever fixed it to come here and assert
+       * the new behaviour, which is what this is. Fixed in python-onlykey:
+       * load_composite_key() now waits for the device's acknowledgement and
+       * raises on a refusal, and setpqc/loadpqc exit non-zero. See FINDINGS.md
+       * #10.
        *
-       * Asserted in both directions on purpose. If the CLI is ever fixed to read
-       * its replies, the second assertion fails and says so, which is the right
-       * outcome for a test whose subject is a known defect.
+       * The device half of the assertion is unchanged and still matters: it is
+       * what proves the CLI is relaying a real refusal rather than failing for
+       * some reason of its own.
        */
       const blob = '00'.repeat(160);
       const { result, said } = await sent(device, ['setpqc', 'RSA1', blob], { signal, replies: 3 });
@@ -343,9 +348,12 @@ describe('onlykey-cli, the slot and key endpoints', {
 
       assert.ok(said.length > 0 && said.every((s) => s === 'Error not in config mode'),
         `expected the device to refuse every chunk, got ${JSON.stringify(said)}`);
-      assert.includes(result.stdout, 'Loaded composite PQC PGP key',
-        'setpqc no longer claims success on a refused load - if it now reports the ' +
-        'refusal, this test has done its job and should assert the new behaviour');
+      assert.notEqual(result.code, 0,
+        'setpqc exited 0 for a load the device refused three times');
+      assert.includes(result.stdout, 'not in config mode',
+        'setpqc did not relay the device\'s reason for refusing');
+      assert.ok(!/Loaded composite PQC PGP key/.test(result.stdout),
+        'setpqc still claims to have loaded a key the device refused');
     });
 
   it('`loadpqc` refuses a file it cannot read, without touching the device',
