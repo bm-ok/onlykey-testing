@@ -8,6 +8,11 @@ The design and its reasoning are in [EXPLAINER.md](EXPLAINER.md). This file is
 how to use what was built. What is left to build is [TODO.md](TODO.md), in the
 order to do it; [PLAN.md](PLAN.md) is why each of those items exists.
 
+**[FINDINGS.md](FINDINGS.md) is every defect this kit has found, and whether
+anybody has been told.** Six write-ups, none of them reported yet - which the
+table says out loud, because a repo full of careful findings and no reporting
+status reads exactly like a repo whose findings were all filed.
+
 ## Quick start
 
 ```sh
@@ -785,8 +790,9 @@ in-process bus like section 1.
   `/app/encrypt` and `/app/decrypt` as well until 2026-08-06; both are driven in
   nw.js by `03-gui/14-gui-encrypt-decrypt`. Everything under pgp-pqc is proven
   headless, so a failure there means the page.
-- **Section 4's remaining tab is SETUP, and only that one.** Slots, Keys,
-  Backup, **Preferences and Advanced** are driven as of 2026-08-06 - 25 tests.
+- **Section 4's tabs are done bar the excluded one.** Slots, Keys,
+  Backup, **Setup, Preferences and Advanced** are driven as of 2026-08-06 - 28
+  tests, the whole tab set bar Firmware.
   **Tools is not, by decision**: it is a launcher, eight external anchors that
   `nw.Shell.openExternal` hands to the user's real browser, with no input,
   select or form on the panel. A link that opens an external page has no

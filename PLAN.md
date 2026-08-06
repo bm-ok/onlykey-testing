@@ -23,7 +23,7 @@ being a measurement, which is the exact failure the dates exist to prevent.
 | section 1 | 112 passed, 0 failed, 1 skipped | 2026-08-06 02:16Z | 94 passed, 0 failed, 19 skipped | 2026-08-06 13:28Z |
 | section 2 | 104 passed, 0 failed (gadget) | 2026-08-06 02:16Z | skipped - `client-access` | n/a |
 | section 3 | 84 passed, 0 failed (headless 56 + browser 28) | 2026-08-06 02:16Z | n/a - both tiers drive the emulator by design | n/a |
-| section 4 | 25 passed, 0 failed | 2026-08-06 14:29Z | n/a - needs `client-access`, the gadget | n/a |
+| section 4 | 28 passed, 0 failed | 2026-08-06 14:44Z | n/a - needs `client-access`, the gadget | n/a |
 | **whole tree** | **353 passed, 0 failed, 2 skipped** in 1489s | 2026-08-06 02:16Z | **147 passed, 0 failed, 19 skipped-with-reason** in 837s (sections 0+1; 2-4 cannot run there) | 2026-08-06 13:28Z |
 
 **THE WHOLE-TREE ROW PREDATES SECTION 4 AND NO LONGER SUMS**, said here rather
