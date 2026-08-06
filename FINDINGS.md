@@ -10,6 +10,12 @@ reader, exactly like a repo whose findings had all been filed.
 **Nothing here has been reported yet.** That is a fact about this repo, not a
 judgement about the findings.
 
+**Severity is not a ranking of how alarming something sounds.** Two of these
+(#2, #7) are bounded by REACHABILITY rather than by what they would do, and #7
+is deliberate firmware behaviour whose defect is that it happens silently. Each
+write-up says what it is NOT as carefully as what it is, and that section is the
+one to read before deciding what to do about it.
+
 | # | finding | component | severity | reported | where | issue |
 |---|---|---|---|---|---|---|
 | 1 | [RSA-4096 key load writes one byte past `rsa_private_key`](FINDING-rsa4096-overflow.md) | firmware (`libraries/onlykey`) | **out-of-bounds WRITE**, reachable from a normal client | **no** | — | — |
@@ -18,6 +24,7 @@ judgement about the findings.
 | 4 | [Slot buttons are clickable ~1.2s before anything is bound](FINDING-app-slot-button-dead-window.md) | OnlyKey-App | low - usability | **no** | — | — |
 | 5 | [The Yubico Public ID field discards a wrong-format value in silence](FINDING-app-yubico-silent-discard.md) | OnlyKey-App | low - usability | **no** | — | — |
 | 6 | [The Tools tab links to an origin the firmware does not stage](FINDING-app-tools-origin.md) | OnlyKey-App | depends on one hosting fact - see the write-up | **no** | — | — |
+| 7 | [Writing an HMAC key silently removes that slot's button-press requirement](FINDING-hmac-press-free-on-write.md) | firmware (`libraries/onlykey`) | low-moderate; DELIBERATE behaviour, silent side effect. Bounded by needing an unlocked device | **no** | — | — |
 
 ## How to keep this honest
 
