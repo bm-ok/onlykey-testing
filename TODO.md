@@ -1214,11 +1214,14 @@ first and has never been pointed at the second.
         "and their tests would keep working" is not one of its advantages until
         somebody makes them work. Decide this first - it shapes every file
         after it.
-      - Whether a packaged app and the kit's own device host can hold the gadget
-        at once. Section 3's browser tier proves a browser and the kit can share
-        it (different nodes: `/dev/hidg*` device side, `/dev/hidraw*` host side),
-        but nothing has tried it with `chrome.hid`. **Still open** - the probe
-        above ran with an EMPTY bus on purpose, so it says nothing about sharing.
+      - ~~Whether a packaged app and the kit's own device host can hold the
+        gadget at once.~~ **ANSWERED 2026-08-06: they can.** With the kit's
+        device host holding the gadget, the App's own `chrome.hid.getDevices`
+        **saw 4 devices** - the gadget's four interfaces - from inside
+        `04-app/10-session`. Same split section 3 relies on: the kit's host owns
+        `/dev/hidg*` (device side) and the App opens `/dev/hidraw*` (host side),
+        so they are not competing for descriptors. `chrome.hid` changes nothing
+        about that.
       - Whether the App has a landing state that touches no device.
         **Partly answered: it does not need one.** It has no device-free page -
         `app.html` enumerates as it loads - but with nothing on the bus it
@@ -1593,6 +1596,16 @@ state to inherit. Files that fail, worst first:
 | `02-cli/01-pqc-keygen` | 3/5 |
 | `02-cli/09-lib-agent-gpg` | 5/9 |
 | `01-protocol/01-debug-console` | 5/6 |
+
+**`04-app/10-session` and `04-app/19-stop` are outside both gates for the same
+structural reason, as of 2026-08-06** - and this is stated rather than left to be
+inferred from their absence, which is how an untested file starts looking tested.
+`10-session` builds the App and raises nw.js; `19-stop` takes it down. Under
+`--isolate` each test would get its own device session and start its own App with
+nothing to stop it; under `--reverse` the chrome.hid test would run before the
+start test and fail on a session that does not exist yet. Neither is isolation
+debt. Every OTHER file in section 4 is expected to pass both, the same way
+section 2's sweep is.
 
 **`03-gui/10-session`, `11`, `12`, `14`, `19-stop` are not in the tally and are
 not debt.** They are structurally non-isolatable BY DESIGN: `10-session` starts
