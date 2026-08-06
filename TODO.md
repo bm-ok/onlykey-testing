@@ -26,11 +26,25 @@ of the old reasoning.
 | — | **section 5, SECURITY** (§6) | PLANNED, after the sweep, by decision. Its two harness prerequisites - a recorded crash rather than an aborted run, and a positive control for every negative assertion - land BEFORE any test in it |
 | — | the International Travel Edition (§3) | DEFERRED until the kit is complete, by decision - a second BUILD, diffed against this one |
 
-**Nothing else is open.** Section 2 is complete, 37 of 37 subcommands. Section 1
-has one row left and it is `OKFWUPDATE`, which is gated `emulated` and driven
-only to its interlocks on purpose - it is not work waiting to be done. Section 3
-is complete but for `13-pgp-pqc`. Everything below the table is either ticked, a
-finding, or debt that is recorded rather than scheduled.
+**No COVERAGE row is open outside that table** - which is what this paragraph
+used to say as "nothing else is open", and a cold reader who took that literally
+would close the file with ten kit-side items still unticked. Section 2 is
+complete, 37 of 37 subcommands. Section 1 has one row left and it is
+`OKFWUPDATE`, which is gated `emulated` and driven only to its interlocks on
+purpose - it is not work waiting to be done. Section 3 is complete but for
+`13-pgp-pqc`.
+
+**What IS still open below the table, and none of it is coverage:**
+
+| where | what |
+|---|---|
+| Kit-side items | the exit-4 device-host **orphan leak**; **SIGABRT** classified as exit 5 when it is a firmware crash; a **run-max during a boot** reported as 5 rather than 3; the shape of the **RSA-4096 regression test**; **per-section budgets** instead of `RUN_MAX` |
+| The venv | whether to pin **solo / python-fido2** back into step |
+| Not tests | **hosted CI**, parked deliberately; whether to track **`package-lock.json`**; the backup TYPESPEED saving; folding the flasher's pacing upstream |
+| §6 | the two **harness prerequisites** for section 5, which land before any test in it |
+
+Everything else below the table is ticked, a finding, or debt that is recorded
+rather than scheduled.
 
 One rule from the old ordering is worth keeping because it corrects a myth that
 cost an hour whenever it resurfaced: **the large-response path went early** even
@@ -422,6 +436,21 @@ first is a defect in **this kit**, not in anything under test:
 | a leaked tab is a slow leak | **NO - it breaks the NEXT page immediately.** Chromium allows **one WebAuthn request at a time per BROWSER**, not per tab, so a page closed while its startup OKCONNECT is outstanding makes the next page's handshake fail inside Chromium with `OperationError: A request is already pending.` The page swallows it, the output box never fills, and what a test sees is a device that was never contacted. Measured: the pending wait was `/Received Message/` and the run died on the inactivity watchdog with the real cause only in the page's console |
 | every app page talks to the device as it loads | verified, and it sharpens what "Encrypt Only needs no device" means - true of the OPERATION, false of the PAGE. `14`'s version of that test asserts on confirmations PRIMED rather than on device silence, and says so; `08`'s headless version really does reach no device |
 | `#header_messages` reports the handshake | verified - onlykey-api.js writes "Secure Connection Established" with the firmware version into it, which is the only page-visible signal that startup finished. `14` waits for it before doing anything, which is what makes closing a page safe |
+
+Checked 2026-08-06 by a cold reader before picking up row 1, all in
+`onlykey/OnlyKey-App` and `emulator/lib`. **These are about the OnlyKey APP and
+the emulator's gadget, not the firmware** - every one was a claim §5's row rested
+on, and the first changes what that row costs:
+
+| claim | status |
+|---|---|
+| `chromeHid._sent` lets a test read what the App put on the wire without patching | **FALSE against a real device.** `send()` (`OnlyKeyComm.js:112-125`) pushes to `_sent` only when `connectionId === "mockConnection"`; the real branch calls `chrome.hid.send` and records nothing, so against the emulator `_sent` stays empty. Not the same shape as `__pgpPqcTestHooks`, which publishes the LIVE transport. Still patchable - `chromeHid` is a `const` binding holding a MUTABLE object, so an injected script can wrap `.send`/`.receive` - but that is patching, and the row assumed it was free |
+| the App finds the device by VID/PID | **INCOMPLETE - there are THREE gates.** `onDeviceAdded()` (`OnlyKeyComm.js:1243-1251`) also requires `collections[0].usagePage == 65451` (`0xFFAB`) and `serialNumber == "1000000000"`. All three match the emulator by reading both sides (`emulator/lib/hid-descriptors.js:19-23`), so the conclusion survives and is now three-for-three instead of one-for-one. **READ ON BOTH SIDES, NOT MEASURED** |
+| a device the App does not recognise is simply not found | **NO** - the `else if` fallback is `supportedDevice && serialNumber != "1000000000"`, the pre-Beta-8 path, which connects to **whatever interface enumerated first with no usagePage check**. On the gadget that is four interfaces behind one VID/PID, so a serial mismatch would present as the App speaking vendor protocol at the keyboard or FIDO interface rather than as an absence |
+| ...and that fallback is worth a test that provokes it | **NO, and this was MY OWN claim four hours earlier in the same session** - corrected before it shipped, which is the premises table working on its author. `usb_init_serialnumber()` (`OnlyKey-Firmware/usb_desc.c:1032`) **hardcodes `num = 1000000000`**; the Teensy code that would derive a per-device serial from flash is commented out directly above it. So **every device on this firmware presents that serial**, the strict branch always wins, and the fallback is unreachable without lying to the App. The emulator's `SERIAL_NUMBER` is faithful imitation rather than a lucky guess. Latent branch, not a live risk - and the cost of provoking it is in §5 |
+| the gadget's VID/PID live in `lib/gadget.js` | **WRONG FILE** - that is the KIT's own file and a consumer of the values. The source is `emulator/lib/hid-descriptors.js`. Same numbers, so nothing downstream changes; worth correcting because a reader chasing the gadget's identity into the kit finds a copy and believes it |
+| `OnlyKey-App/build/` is checked in, and the question is whether it is current | **NEITHER** - `build/` is **gitignored** (`.gitignore:5`). What is on this workstation is a local artifact from clone time, and it IS current (it differs from `app/` only by an appended sourcemap comment). So a fresh checkout has no `build/` and `gulp build` is unconditional - a CI fact, not a convenience |
+| the App ships a harness, so there is something to adopt | **TRUE, but it does not RUN as shipped.** `test/` holds FOUR files, not the three tabled in §5: the fourth is `serial.js`, which requires `node-hid` - **not a dependency of that repo** - and `chalk`. Mocha's default glob is `test/*.js`, so `npm test` dies at that require; past it, `serial.js`'s 1 ms `setInterval` would stop mocha exiting, and `driver.js` launches nw.js at module scope rather than in a hook. Adopting means repairing three defects in somebody else's repo first |
 
 `OKFWUPDATE` is the exception to "check it": it is not to be verified
 experimentally, and the gate is mechanical instead - see its row below.
@@ -840,12 +869,34 @@ Two things that are not optional for any of them, both already measured:
   landing page in `tools/nwjs` makes no device call, which is what makes it safe
   to start on.
 
-- [ ] **THE `ctap_end_get_assertion()` PREDICTION, and why chasing it changed
-      shape.** The alpha report's finding ends: "It also affects the classic RSA
-      path, which shares this transport, for any response served in more than one
-      chunk." Written as a prediction, never verified. **READ, NOT MEASURED - do
-      not treat the following as settled**; it is here so the next attempt starts
-      from the right question.
+- [x] **THE `ctap_end_get_assertion()` PREDICTION - RESOLVED 2026-08-06, and it
+      is vacuous for classic RSA.** It sat here unticked and outside the open-work
+      table, which is neither closed nor scheduled - **the exact shape of the
+      `18-gui-encrypt-decrypt` mistake**, where an item nobody could see was open
+      stayed open for weeks. Resolved rather than tabled, because the reasoning
+      below plus one measurement that already exists settles it:
+
+      - **The largest classic RSA response is exactly one chunk.** `chunk_len =
+        remaining > 512 ? 512 : remaining` and a classic response is `type * 128`,
+        so RSA-4096's 512 bytes is served whole. The condition the prediction
+        names - "any response served in more than one chunk" - is **unreachable
+        for classic RSA**, so the sentence is vacuous rather than wrong.
+      - **The RSA-2048 case is MEASURED and it works.** `01-protocol/23-rsa-tunnel`
+        drives OKSIGN and OKDECRYPT over this transport against a 2048-bit key,
+        and `03-gui/08`/`14` then drive the same path through the shipped library
+        and the pages. That was this row's "RSA-2048 second, because it is what
+        the pages actually use", and it landed without anybody connecting it back.
+      - **The 512-byte boundary case is BLOCKED, on a defect already tracked.**
+        It is the one input where reading the code is least trustworthy, and it
+        cannot be driven: loading an RSA-4096 key aborts the firmware on a
+        one-byte overflow before any response is served
+        ([FINDING-rsa4096-overflow.md](FINDING-rsa4096-overflow.md)). So the
+        residue of this row is not a row of its own - it is a case that unblocks
+        when that overflow is fixed, and `23-rsa-tunnel`'s
+        `OKT_EXPECT_RSA4096_FIX=yes` gate is where it is already waiting.
+
+      Original analysis follows, kept because the chunk arithmetic is what the
+      resolution rests on. **READ, NOT MEASURED** where it says so.
 
       The mechanism splits by response size because a response that fits ONE
       chunk completes inside `send_stored_response()`, which sets
@@ -1013,9 +1064,10 @@ first and has never been pointed at the second.
 
       | file | what it is |
       |---|---|
-      | `driver.js` | selenium-webdriver pointed at **nw.js's bundled chromedriver**, with `nwapp=<repo>/build` |
+      | `driver.js` | selenium-webdriver pointed at **nw.js's bundled chromedriver**, with `nwapp=<repo>/build`. Builds the driver **at require time**, so loading it launches nw.js |
       | `startup-test.js` | mocha + chai: the disconnected dialog, the working dialog |
       | `configure-slot-test.js` | a whole slot-configuration flow, up to asserting the OKSETSLOT bytes |
+      | `serial.js` | a node-hid SEREMU console reader. **Not a test**, and it is what stops the suite running - see below |
 
       **And it proves the UI against a MOCK, not a device**, which is precisely
       the gap this kit would fill. Its tests call `chromeHid.onDeviceAdded.
@@ -1024,36 +1076,109 @@ first and has never been pointed at the second.
       wiring is covered and the device never is - the mirror image of every other
       section here, where the device is covered and the page was not.
 
+      **THE SUITE DOES NOT RUN AS SHIPPED, measured 2026-08-06**, and anything
+      that proposes adopting it pays to fix that first. `test/serial.js` requires
+      `node-hid` and `chalk`; **`node-hid` is not in `package.json` at all** and
+      is not installed. Mocha's default spec glob is `test/*.js`, so `npm test`
+      loads `serial.js` and dies at the require. Past that it would not terminate
+      either - `serial.js` installs a 1 ms `setInterval` with nothing to clear it.
+      And `driver.js` builds its driver at module scope rather than in a hook, so
+      merely loading the files launches nw.js. Three defects, none of them deep,
+      all of them somebody else's repo.
+
       Two consequences, and they point in opposite directions:
 
-      1. **`chromeHid._sent` is an instrumentation seam that already exists**,
-         the same shape as pgp-pqc's `window.__pgpPqcTestHooks`. A test can read
-         exactly what the app put on the wire without patching anything.
+      1. **`chromeHid._sent` IS NOT AN INSTRUMENTATION SEAM AGAINST A REAL
+         DEVICE** - this row claimed it was, and the claim is **FALSE**, measured
+         2026-08-06. `send()` (`app/scripts/onlyKey/OnlyKeyComm.js:112-125`)
+         pushes to `_sent` **only** when `connectionId === "mockConnection"`; the
+         real branch calls `chrome.hid.send` and records nothing. Driven against
+         the emulator, `_sent` stays empty forever. It is **not** the same shape
+         as pgp-pqc's `window.__pgpPqcTestHooks`, which publishes the LIVE
+         transport - this publishes only the mock's.
+
+         What is true is weaker and still useful: `chromeHid` is a `const`
+         BINDING holding a MUTABLE object, so an injected script can replace
+         `chromeHid.send` and `chromeHid.receive` with recording wrappers. That
+         is patching, and the cost of the row has to carry it rather than assume
+         a seam that is already there.
       2. **A mock that answers is a mock that can drift.** Its canned
          `'UNLOCKEDv0.2-beta.3'` and hand-written slot list are a firmware
          version this kit does not run. Driving the same flows against the
          emulator is what would catch that, and is the reason to bother.
 
-      **THE REACHABILITY QUESTION IS ALREADY ANSWERED, which is the single most
-      useful thing here.** `build/manifest.json` declares `usbDevices` for
-      **`{vendorId: 7504, productId: 24828}` = `0x1D50:0x60FC`** - and that is
-      exactly what the emulator's gadget presents (`lib/gadget.js`'s
-      `ONLYKEY_VID`/`ONLYKEY_PID`). So the App can see the emulated device with
-      no change to either side, and section 4 needs `client-access` the same way
-      section 2 does. The other declared pair, `{5824, 1158}` = `0x16C0:0x0486`,
-      is the Teensy raw-HID identity. **READ, NOT MEASURED** - nothing has yet
-      launched the App against the gadget.
+      **THE REACHABILITY QUESTION IS ANSWERED ON THREE GATES, NOT ONE**, which is
+      the single most useful thing here - and the row named only the first.
+      `onDeviceAdded()` (`OnlyKeyComm.js:1243-1251`) requires all of:
+
+      | gate | the App wants | the emulator's gadget presents |
+      |---|---|---|
+      | VID/PID | `{7504, 24828}` = `0x1D50:0x60FC`, from `SUPPORTED_DEVICES` | `VENDOR_ID 0x1d50` / `PRODUCT_ID 0x60fc`, `emulator/lib/hid-descriptors.js:19-20` |
+      | `collections[0].usagePage` | `65451` = **`0xFFAB`**, the vendor interface | `rawhidDesc(0xFFAB, 0x02)`, same file |
+      | `serialNumber` | the literal **`"1000000000"`** | `SERIAL_NUMBER = '1000000000'`, same file |
+
+      So the App can see the emulated device with no change to either side, and
+      section 4 needs `client-access` the same way section 2 does. The other
+      declared pair, `{5824, 1158}` = `0x16C0:0x0486`, is the Teensy raw-HID
+      identity. **READ ON BOTH SIDES, NOT MEASURED** - nothing has yet launched
+      the App against the gadget.
+
+      **And note the fallback, because it fails as something else - but it is
+      NOT PROVOKABLE, and that is the useful half.** The `else if` beside that
+      test is `supportedDevice && device.serialNumber != "1000000000"` - the
+      pre-Beta-8 path - which calls `connectDevice()` on **whatever interface
+      enumerated first**, with no usagePage check at all. On the gadget that is
+      four interfaces sharing one VID/PID, so a serial that stopped matching
+      would present as the App talking vendor protocol at the keyboard or FIDO
+      interface rather than as "device not found".
+
+      **It cannot stop matching on this firmware.** `usb_init_serialnumber()`
+      (`OnlyKey-Firmware/usb_desc.c:1032`) hardcodes `num = 1000000000` with the
+      Teensy per-device derivation commented out above it, so every device on
+      this firmware presents that serial and the strict branch always wins. Two
+      ways to reach the fallback anyway, and **neither is worth a test**:
+
+      | route | cost | what it would prove |
+      |---|---|---|
+      | re-create the gadget with a different serial | **root**, and a teardown/recreate - the serial is written into configfs once by `scripts/gadget-setup.sh`, not by `gadget-bridge.js`, so it is not a per-run parameter | that the App mis-selects an interface, on a bus configuration no device produces |
+      | patch `chromeHid.getDevices` in the page | free | the same thing, against a synthetic input - which is what the App's own mocked tests already do, and the weaker evidence this section exists to replace |
+
+      So: **recorded as a latent branch, not scheduled.** It becomes live the day
+      the firmware starts deriving a real per-device serial - which is a change
+      worth watching for, since it would silently move every Beta-8 device onto
+      the unchecked path.
+
+      **The gadget's identity is `emulator/lib/hid-descriptors.js`, not
+      `lib/gadget.js`** - this row cited the latter, which is the KIT's own file
+      and a consumer of those values rather than their source. Same numbers, so
+      nothing downstream changes; the citation pointed at the wrong side of the
+      fence.
 
       What is NOT known, and should be established before writing tests:
 
-      - Whether `chrome.hid` works under this nw.js at all, and whether the app
-        must be built (`gulp build` → `build/`) before every run or whether the
-        checked-in `build/` is current.
+      - Whether `chrome.hid` works under this nw.js at all.
+      - **`build/` is GITIGNORED** (`.gitignore:5`), so the question this row
+        used to ask - "is the checked-in `build/` current" - has no answer:
+        there is no checked-in `build/`. What is on this workstation is a local
+        artifact from clone time and it IS current (it differs from `app/` only
+        by an appended sourcemap comment). So `gulp build` is an unconditional
+        prerequisite on any fresh checkout, which is a CI fact rather than a
+        developer-convenience one.
+
+        **Measured 2026-08-06, and it is cheap: `gulp build` succeeds in 1.78s,
+        exit 0, on Node 24.18.1** - `clean`, `transpile`, `copy`, `finalize`, one
+        deprecation warning and no errors. So this costs a second per run rather
+        than being a porting project, and the build is a plain file copy plus a
+        sourcemap rather than a bundler that could drift. It does `clean` first,
+        so `build/` is destroyed and regenerated every time - nothing may be
+        edited there and expected to survive.
       - Whether to drive it over **CDP** the way `lib/gui.js` already does, or to
         adopt selenium as the App's own tests do. CDP keeps the kit
         dependency-free and reuses the session machinery; selenium is the path
-        the App's authors took and their tests would keep working. Decide this
-        first - it shapes every file after it.
+        the App's authors took, but their tests do not currently run, so
+        "and their tests would keep working" is not one of its advantages until
+        somebody makes them work. Decide this first - it shapes every file
+        after it.
       - Whether a packaged app and the kit's own device host can hold the gadget
         at once. Section 3's browser tier proves a browser and the kit can share
         it (different nodes: `/dev/hidg*` device side, `/dev/hidraw*` host side),

@@ -383,7 +383,7 @@ What that leaves is lopsided, and worth knowing before picking anything up:
 | section | open | blocked on |
 |---|---|---|
 | sanity | 0 | done |
-| protocol | 1 (partial) | nothing - it is `08-backup-hmac`'s HMAC settings half, which is a test to write |
+| protocol | 1 (partial) | **NOT a test to write, and this row said it was until 2026-08-06.** `08-backup-hmac`'s **settings** half is DONE - `hmackeymode` is one of the 13 device settings `02-cli/11-cli-settings` drives, so it landed without anybody noticing. What is left is the **HMAC-SHA1 challenge-response feature itself**, and it is blocked on **two IPC verbs** (`kbdSetReport`/`kbdGetReport`) that do not exist in the emulator's protocol. See TODO's §2, which is the correct version of this row |
 | cli | 0 | done - every carried-over row has a replacement |
 | gui | 1 | `17-nwjs-composite-pgp`, which is the pgp-pqc page - `vault`/`chat` are placeholders, not gaps, and `18-gui-encrypt-decrypt` is done in both tiers |
 
@@ -1029,7 +1029,17 @@ slot fields are worse — two of twenty-eight.
       is wedged until restarted. Device up and unlocked first, always. The
       landing page in `tools/nwjs` makes no device call, which is what makes it
       safe to start on
-- [ ] Section 4, the OnlyKey app — never driven from a harness at all
+- [ ] **Section 4, the OnlyKey app.** This row said "never driven from a harness
+      at all" until 2026-08-06, and that is **false**: the App ships its own
+      selenium + mocha suite in `OnlyKey-App/test/`, driving nw.js's bundled
+      chromedriver. What is true is that the suite proves the UI against a
+      **mocked `chrome.hid`** and never against a device - the mirror image of
+      every other section here. Two things measured while correcting this, both
+      of which change what adopting it would cost: the suite **does not run as
+      shipped** (`test/serial.js` requires `node-hid`, which is not a dependency
+      of that repo), and `chromeHid._sent` **records only mock traffic**, so it is
+      not the free instrumentation seam it looks like. TODO's §5 carries the
+      detail and the three device-selection gates
 - [ ] Services started and stopped by *visible* test files at the section
       boundaries, never hooks; cleanup tracks process groups, because nw.js can
       crash and orphan the server it spawned holding a port
