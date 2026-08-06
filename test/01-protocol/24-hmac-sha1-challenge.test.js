@@ -1,24 +1,4 @@
 /*
- * PARKED IN wip/, WHICH THE RUNNER DOES NOT GLOB - NOT FINISHED, 2026-08-06.
- *
- * WHAT WORKS, verified: the two IPC verbs, the 10-frame SET_REPORT write, the
- * CRC, the 16+4 key split, and the write completing on the device - the console
- * shows slot 130 and the key bytes 30 31 ... 69 6A arriving intact.
- *
- * WHERE IT STOPS: the CHALLENGE frame is sent and accepted, but
- * okcrypto_hmacsha1()'s "GENERATE HMACSHA1 MESSAGE RECEIVED" never appears, so
- * either the challenge branch is not being entered or it is being entered and
- * refusing before that print. The next thing to do is wait on process_setreport's
- * OWN earlier print, "Received HMACSHA1 Message" (okcore.cpp:7843), which fires
- * before okcrypto_hmacsha1() is called - if THAT appears the branch is entered
- * and the problem is inside the handler; if it does not, the buffer is not
- * routing to the challenge branch at all and keyboard_buffer[64] is the thing
- * to dump.
- *
- * Everything below the header is measured rather than assumed, and the four
- * traps recorded in it each cost a run. Parked rather than deleted for exactly
- * that reason.
- *
  * Section 1: Yubikey-style HMAC-SHA1 challenge-response over HID CONTROL
  * TRANSFERS on the keyboard interface.
  *
@@ -102,6 +82,42 @@ const KBD_BUFFER_SIZE = 70;
  * Serial.println and is plain text, so it is the marker that works.
  */
 const WRITE_DONE = /Sending transport response data/;
+
+/* The challenge branch's own first print, and the completion print after it. */
+const CHALLENGE_SEEN = /HMACSHA1 Input/;
+const PRESS_WANTED = /Waiting for challenge buttons/;
+
+/*
+ * The challenge BRANCH's entry print, which is not the same as the handler's.
+ *
+ * "Waiting for challenge buttons to be pressed" lives inside
+ * okcrypto_hmacsha1()'s else - so it only appears once that handler is CALLED,
+ * which on the press path happens when the button arrives, not when the
+ * challenge does. Waiting for it to confirm the challenge was received is
+ * therefore waiting for the thing the press is supposed to cause. The branch
+ * announces itself earlier, in process_setreport, and that is what says the
+ * challenge landed at all.
+ */
+const CHALLENGE_BRANCH = /Received HMACSHA1 Message|Challenge Disabled/;
+
+/*
+ * A KEYBOARD BUFFER IS WIPED FIVE SECONDS AFTER IT LANDS, AND THAT RACES THE
+ * FADE GATE. THIS IS THE WHOLE REASON THE CHALLENGE HALF LOOKED BROKEN.
+ *
+ * The firmware arms a Wipedata timer - "wipe buffers after 5 sec" on the
+ * console - so keyboard_buffer is zeroed shortly after it is filled. Meanwhile
+ * process_setreport() only runs when `!isfade || configmode`
+ * (OnlyKey.ino:477). Send a challenge while an LED fade is still running and
+ * the wipe wins: the handler DOES run, prints "Received USB Keyboard Packets",
+ * and byteprints EIGHTY ZEROS. keyboard_buffer[64] is then 0, so no branch
+ * matches and the challenge silently does nothing.
+ *
+ * That is indistinguishable from "the branch refused" unless you dump the
+ * buffer, which is what finally separated them. Settling before the challenge
+ * so it is consumed inside the five seconds is the fix; measured, the frames
+ * themselves take 9ms and consumption is immediate once nothing is fading.
+ */
+const FADE_SETTLE_MS = 4000;
 
 /** CRC-16/MCRF4XX, which is what libyubikey's yubikey_crc16 computes. */
 function crc16(buf, len = buf.length) {
@@ -283,9 +299,10 @@ describe('HMAC-SHA1 challenge-response over keyboard control transfers', {
       log(`wrote a 20-byte HMAC key to slot ${HMACSHA1_1}`);
 
       /* ---- challenge that slot (selector 0x30) ---- */
+      await device.sleep(FADE_SETTLE_MS, { signal });
       device.log.clear();
       await sendKbdBuffer(device, challengeBuffer(CHALLENGE_SLOT_1, CHALLENGE), { signal });
-      await waitConsumed(device, /GENERATE HMACSHA1 MESSAGE RECEIVED/, { signal });
+      await waitConsumed(device, CHALLENGE_SEEN, { signal });
       const res = await readResponse(device, { signal });
 
       assert.ok(res.staged,
@@ -346,10 +363,11 @@ describe('HMAC-SHA1 challenge-response over keyboard control transfers', {
       await sendKbdBuffer(device, writeKeyBuffer(WRITE_SLOT_1, KEY), { signal });
       await waitConsumed(device, WRITE_DONE, { signal });
 
+      await device.sleep(FADE_SETTLE_MS, { signal });
       device.log.clear();
       await sendKbdBuffer(device, challengeBuffer(CHALLENGE_SLOT_1, CHALLENGE), { signal });
-      await waitConsumed(device, /GENERATE HMACSHA1 MESSAGE RECEIVED/, { signal });
-      const before = device.log.count(/Waiting for challenge buttons/);
+      await waitConsumed(device, CHALLENGE_SEEN, { signal });
+      const before = device.log.count(PRESS_WANTED);
       const res = await readResponse(device, { signal });
 
       assert.ok(res.staged,
@@ -365,7 +383,7 @@ describe('HMAC-SHA1 challenge-response over keyboard control transfers', {
        * only way to tell "answered immediately" from "answered because
        * something else pressed a button".
        */
-      assert.equal(device.log.count(/Waiting for challenge buttons/), before,
+      assert.equal(device.log.count(PRESS_WANTED), before,
         'the device asked for a button press and something answered it - this ' +
         'test proves nothing unless no press was requested');
       log('answered with no press requested, and no press given');
@@ -394,9 +412,10 @@ describe('HMAC-SHA1 challenge-response over keyboard control transfers', {
       await sendKbdBuffer(device, writeKeyBuffer(WRITE_SLOT_1, KEY), { signal });
       await waitConsumed(device, WRITE_DONE, { signal });
 
+      await device.sleep(FADE_SETTLE_MS, { signal });
       device.log.clear();
       await sendKbdBuffer(device, challengeBuffer(CHALLENGE_SLOT_2, CHALLENGE), { signal });
-      await waitConsumed(device, /GENERATE HMACSHA1 MESSAGE RECEIVED|Waiting for challenge buttons/, { signal });
+      await waitConsumed(device, CHALLENGE_BRANCH, { signal });
 
       /*
        * FIRST: nothing is staged. This is the assertion that matters - a device
@@ -408,11 +427,20 @@ describe('HMAC-SHA1 challenge-response over keyboard control transfers', {
         `press, without one - markers ${JSON.stringify(beforePress.markers)}`);
       log('nothing staged before the press, which is the gate holding');
 
-      /* The device says so itself, which is the positive control for the
-       * absence above: silence from a wedged device would look identical. */
-      await device.log.waitFor(/Waiting for challenge buttons/,
-        { timeoutMs: 15000, signal });
-      log('the device asked for a press');
+      /*
+       * THE POSITIVE CONTROL IS THE PRESS ITSELF, not a console line.
+       *
+       * "Waiting for challenge buttons to be pressed" looks like the obvious
+       * confirmation and is the wrong instrument: it prints inside
+       * okcrypto_hmacsha1()'s else, so it appears only once that handler is
+       * CALLED - which on this path is when the button arrives. Waiting for it
+       * to prove the challenge was received means waiting for the thing the
+       * press is supposed to cause, and it times out every time.
+       *
+       * What makes the absence above meaningful is that the SAME challenge
+       * answers once a button is pressed: silence from a wedged device would
+       * not. So the control is the next three lines, not a log line.
+       */
 
       /*
        * THEN press. The handler clause is
