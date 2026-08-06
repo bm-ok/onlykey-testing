@@ -1397,7 +1397,24 @@ the surface to repay looking, not a claim that it is unsound.
 
 ### The two harness prerequisites - both before any test in this section
 
-- [ ] **A dead device host must be a RECORDED RESULT, not the end of the run.**
+- [x] **A dead device host must be a RECORDED RESULT, not the end of the run.**
+      **BUILT 2026-08-06** as `device.expectFatal(fn)`. Arms the transport for
+      ONE operation; a crash inside that window is captured as evidence - kind,
+      signal, code, generation and the whole stderr tail, which is where the
+      addon's `[okemu] FATAL:` line and backtrace live for a segfault and
+      glibc's `*** buffer overflow detected ***` for an abort - and a fresh host
+      comes up against the SAME storage dir. A crash outside the window still
+      ends the run, it does not nest, and it REJECTS if the device survives.
+      Proven by `01-protocol/25-rsa4096-overflow`, which captures the abort and
+      then requires the run to CONTINUE, with a 2048-bit load through the same
+      path as its positive control. Verified in a whole-section run: 173 passed
+      in 755s with the crash in the middle of it.
+
+      **It does NOT unblock `23-rsa-tunnel`'s 4096 case**, which is about
+      response chunking and still needs the key to LOAD. What it retires is the
+      kit's inability to test its own most serious finding.
+
+- [x] ~~**A dead device host must be a RECORDED RESULT, not the end of the run.**~~
       For coverage, aborting is right: a device that died mid-suite invalidates
       everything after it. Here it is useless, because **"the device died" IS the
       finding**. `23-rsa-tunnel`'s 4096 case demonstrates both halves - it has to
