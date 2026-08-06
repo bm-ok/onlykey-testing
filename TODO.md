@@ -25,17 +25,20 @@ implies:
 |---|---|---|
 | 1 | `loadpqc` / `loadkey` accepting paths (§1) | the last section-2 row; a wiring job, the pieces exist |
 | 2 | HMAC challenge-response (§2) | NOT "HMAC settings" - that half is already done by `11-cli-settings`. This is the Yubikey-style feature the old kit could not reach, and it needs two IPC verbs first |
-| 3 | **`18-gui-encrypt-decrypt`'s BROWSER tier (§4)** | its library tier landed 2026-08-05 as `03-gui/08-pgp-encrypt-decrypt`, so a failure in nw.js now means the PAGE. Automatable the way `11-password-generator` and `12-age-derive` are - it needs a display, not a human |
-| 4 | `13-pgp-pqc` (§4) | **this** is the one that needs a browser in front of a human. Page debugging, not coverage |
-| 5 | section 4, the app (§5) | no ancestor anywhere; genuinely last |
+| 3 | `13-pgp-pqc` (§4) | **this** is the one that needs a browser in front of a human. Page debugging, not coverage |
+| 4 | section 4, the app (§5) | no ancestor anywhere; genuinely last |
+| — | **section 5, SECURITY (§6)** | PLANNED, after the sweep, by decision. Its two harness prerequisites - a recorded crash rather than an aborted run, and a positive control for every negative assertion - land BEFORE any test in it |
 | — | the International Travel Edition (§3) | DEFERRED until the kit is complete, by decision - a second BUILD, diffed against this one |
 
 **The two remaining pages used to share one row and must not**, because they are
 blocked on completely different things and merging them made the unblocked one
 look blocked. `13-pgp-pqc` needs a browser and a human. `18-gui-encrypt-decrypt`
-needed neither for its first half, and **that half is now done** -
-`03-gui/08-pgp-encrypt-decrypt`, 6 tests in 135s, `--isolate` 6/6 and `--reverse`
-green. The three things that used to stop it were all gone, and they held up:
+needed neither, and **it is now done in BOTH tiers** -
+`03-gui/08-pgp-encrypt-decrypt` (6 tests in 135s, `--isolate` 6/6 and
+`--reverse` green) and `03-gui/14-gui-encrypt-decrypt` (6 tests in a real
+Chromium, 107s with its session). So `13-pgp-pqc` is the only page left. The
+three things that used to stop the classic pages were all gone, and they held
+up:
 
 1. **A classic RSA key in RSA slots 1 and 2**, which `onlykey-pgp.js`'s `slotid()`
    hardcodes (2 to sign, 1 to decrypt). Loaded and asserted about by
@@ -73,12 +76,14 @@ entered**, §3's remaining row is a deferred second BUILD rather than a test, an
 three findings are written up for upstream - the two above plus
 [FINDING-cli-exit-codes.md](FINDING-cli-exit-codes.md).
 
-**And a sixth file landed the same evening**, off the top of the table above:
-`03-gui/08-pgp-encrypt-decrypt`, 6 tests in 135s, both gates green. It drives
-`startEncryption` and `startDecryption` through all five of `_$mode()`'s modes -
-Encrypt Only, Sign Only, Encrypt and Sign, Decrypt Only, Decrypt and Verify - so
-the encrypt and decrypt pages now have a library tier under them and a failure in
-nw.js means the PAGE. See §4, and the premises it settled in the table below.
+**And the classic PGP pages landed the same night, in BOTH tiers**, off the top
+of the table above. `03-gui/08-pgp-encrypt-decrypt` (6 tests in 135s, both gates
+green) drives `startEncryption` and `startDecryption` through all five of
+`_$mode()`'s modes headless; `03-gui/14-gui-encrypt-decrypt` (6 tests, 107s with
+its session) drives the same five through `/app/encrypt` and `/app/decrypt` in a
+real Chromium over the USB gadget. Both check their output against openpgp.js
+from the other side of the same key. See §4, and the premises they settled in the
+table below.
 
 **When a file lands, update its section's `last run` in [PLAN.md](PLAN.md)'s
 counts table.** The emulated and hardware columns carry separate dates because
@@ -386,6 +391,16 @@ they belong here for the same reason: each was a claim something else rested on.
 | a PGP decrypt crosses the keyhandle boundary | verified - `auth_decrypt` sends `ct.slice(12)`, which for RSA-2048 is the whole 256-byte modulus-long ciphertext, so `u2fSignBuffer` frames it as 228 + 28. The device accumulated all 256, which is the client-side half of what `23-rsa-tunnel` proved firmware-side |
 | `usevirtru` is safe to pass as `false` | **NO** - `usevirtru != null` is TRUE for `false`, so `false` arms a Virtru branch that plugin.js's own `pgp()` never arms (it forwards an absent argument). `03-gui/07-pgp-keys` passes `false`; it only escapes because it never runs a file path. Pass nothing |
 | `_poll_delay` is chosen from the key's size | **NO, from the key id COUNT** - `loadPublicSignerID` sets 1 if a third key id exists and 8 otherwise, commented "Assuming RSA 4096 or 3072". An ordinary primary-plus-subkey RSA-2048 key has two, so every signature waits 8 seconds for no reason. Costs time, nothing else |
+
+Checked while writing `03-gui/14-gui-encrypt-decrypt` - the BROWSER tier. The
+first is a defect in **this kit**, not in anything under test:
+
+| claim | status |
+|---|---|
+| `page.close()` closes the window | **FALSE, and it was the kit's own bug** - it was `this.ws.close()` alone, which drops the debugger socket and leaves the tab running, loaded and still retrying. `11-password-generator`'s "closes its window" test has always CLAIMED the opposite in its comment ("a window left open holds a device handle"), and nothing noticed because **no file had ever opened a second page in one session**. Fixed: `close()` now shuts the target over the browser endpoint. See the next row for how it presented |
+| a leaked tab is a slow leak | **NO - it breaks the NEXT page immediately.** Chromium allows **one WebAuthn request at a time per BROWSER**, not per tab, so a page closed while its startup OKCONNECT is outstanding makes the next page's handshake fail inside Chromium with `OperationError: A request is already pending.` The page swallows it, the output box never fills, and what a test sees is a device that was never contacted. Measured: the pending wait was `/Received Message/` and the run died on the inactivity watchdog with the real cause only in the page's console |
+| every app page talks to the device as it loads | verified, and it sharpens what "Encrypt Only needs no device" means - true of the OPERATION, false of the PAGE. `14`'s version of that test asserts on confirmations PRIMED rather than on device silence, and says so; `08`'s headless version really does reach no device |
+| `#header_messages` reports the handshake | verified - onlykey-api.js writes "Secure Connection Established" with the firmware version into it, which is the only page-visible signal that startup finished. `14` waits for it before doing anything, which is what makes closing a page safe |
 
 `OKFWUPDATE` is the exception to "check it": it is not to be verified
 experimentally, and the gate is mechanical instead - see its row below.
@@ -906,15 +921,36 @@ Two things that are not optional for any of them, both already measured:
       guards above. Check the inputs before blaming WebAuthn.
 
       Original scope note follows.
-- [ ] **`18-gui-encrypt-decrypt`, the BROWSER half** - the classic (non-PQC) PGP
-      pages, `/app/encrypt` and `/app/decrypt`, which no kit has driven. Split it the
-      way the old one did: of the encrypt page's three modes only **Encrypt
-      Only** avoids the device entirely, so that half runs with nothing plugged
-      in and is the cheapest possible "did we break encrypt" check. Sign Only,
-      Encrypt and Sign, and both decrypt modes call `OKSIGN`/`OKDECRYPT` against
-      **RSA slot 1 (decrypt) and slot 2 (sign)**, hardcoded in
-      `onlykey-pgp.js`'s `slotid()` - so that half needs the classic RSA key
-      handling above.
+- [x] **`18-gui-encrypt-decrypt`, the BROWSER half - DONE.**
+      `03-gui/14-gui-encrypt-decrypt`, 6 tests, 107s with its session. All five
+      modes through `/app/encrypt` and `/app/decrypt` in nw.js, with the device
+      reached by Chromium's own WebAuthn over the USB gadget - the same pairing
+      `11-password-generator` has, and the reason a failure here now means the
+      PAGE.
+
+      **Four things about the pages that are not guessable**, and two of them
+      cost real time:
+
+      1. **The recipients field is not the input it looks like.**
+         `jquery.tokenizer.js` replaces `#pgpkeyurl` with a contenteditable span,
+         hides the real one and writes `escape(value)` into it. That is what
+         `startEncryption`'s `slice(0,11) == '-----BEGIN%'` branch is for - an
+         armored key arrives URL-ESCAPED, which is also the only way one fits,
+         since an `<input>` strips newlines from `.value`. Driving it means
+         `jQuery("#pgpkeyurl").data("tokenizer").add(key)`, which is the call the
+         widget itself makes on blur.
+      2. **`window.$` does not exist** - app.js sets only `window.jQuery`, and the
+         plugin system passes `$` around as a dependency.
+      3. **The mode is read off the radio during `page.setup()`**, and each radio
+         re-runs setup on `change`. There is no other way in: `page.okpgp` lives
+         in the plugin's closure and is not published on `window` the way
+         pgp-pqc's test hooks are.
+      4. **Both pages write their result back into the SAME textarea** the input
+         came from, so "it worked" is "the box CHANGED", not "the box is
+         non-empty".
+
+      Two findings, one in the kit and one about the pages - see the rows below
+      and the premises table.
 - [ ] **`13-pgp-pqc`** - LAST, by decision. Working copy is
       [wip/13-pgp-pqc.test.js](wip/13-pgp-pqc.test.js), which the runner does
       not glob. Everything beneath it is now proven headless by
@@ -929,6 +965,110 @@ Two things that are not optional for any of them, both already measured:
 
 - [ ] **Never driven from a harness at all**, by this kit or the old one. The
       one part with no ancestor, which is why it is last.
+
+## 6. Section 5 - security. PLANNED, NOT BUILT, AFTER THE SWEEP
+
+Recorded now while the reasoning is fresh; [PLAN.md](PLAN.md)'s stage 7 carries
+the argument for every line here. **Nothing in this section is to be written
+until the two harness rows below have landed** - a security test written without
+them produces confident nonsense, which is worse than no test.
+
+**The admission test, and it has to be this sharp or the section becomes a junk
+drawer:**
+
+> **Does this send something the device should REFUSE, or look for something it
+> should not REVEAL?**
+
+Every other section is organised by what a test NEEDS to run - that is why
+section 1 runs on hardware and in CI and section 2 can do neither. Security is
+organised by INTENT and cuts across all of it, so it cannot be filed by
+transport. A test that lands here while actually asserting that something WORKS
+belongs in its own section, and the rule above settles that without an argument.
+
+**No deliberate security pass has ever been run against this firmware from this
+kit.** Every finding so far arrived sideways, out of coverage work tripping over
+something: the RSA slot tail while reading code for a coverage test, the RSA-4096
+overflow while loading a key a feature needed, the `last_request_opt3` clobber
+because a scripted caller was faster than any human. That is a reason to expect
+the surface to repay looking, not a claim that it is unsound.
+
+### The two harness prerequisites - both before any test in this section
+
+- [ ] **A dead device host must be a RECORDED RESULT, not the end of the run.**
+      For coverage, aborting is right: a device that died mid-suite invalidates
+      everything after it. Here it is useless, because **"the device died" IS the
+      finding**. `23-rsa-tunnel`'s 4096 case demonstrates both halves - it has to
+      be gated off behind `OKT_EXPECT_RSA4096_FIX=yes` just to let the file land,
+      and a test cannot observe the abort from the inside because the runner
+      classifies a dead host as a run-level abort before any assertion runs. What
+      is needed is a runner mode where a crash is captured with its evidence -
+      the signal, the addon's `[okemu] FATAL:` line and backtrace, and the request
+      that caused it - and the next case continues against a fresh host.
+- [ ] **NO NEGATIVE ASSERTION COUNTS UNLESS A POSITIVE CONTROL IN THE SAME TEST
+      FIRES. A gate, like `--isolate` and `--reverse`.** A section built on "the
+      device did not reveal X" is a section where a broken instrument reads as a
+      pass, and this kit produced **three** of those in one day:
+
+      | what read as absence | what it actually was |
+      |---|---|
+      | no plaintext in the RSA slot tail | `pqc.readyForKeygen()` RESTARTS, and a reboot zeroes the global holding the residue |
+      | still none, second attempt | `flash.bin` is word-reversed - the search was looking for the wrong byte order |
+      | silence from an unknown vendor message id | a CTAPHID error frame on the vendor interface; the test expected silence and was wrong |
+
+      The first two would have closed a real finding as "nothing there".
+      `01-protocol/22-rsa-slot-tail` is the pattern to generalise: it writes a
+      known marker through a path that is NOT encrypted, finds it, and only then
+      believes an absence elsewhere in the same dump. **Prove the instrument in
+      the same test, or the absence means nothing.**
+
+### Gating
+
+- [ ] **Emulated-only by default, hardware behind an explicit opt-in** - the
+      shape `fido-reset` and `full-wipe` already use, with the reason string
+      naming the cost. Provoking malformed writes, oversized lengths and
+      deliberate crashes against a physical key is a separate risk conversation,
+      and the gate is where that gets recorded rather than assumed.
+
+### What makes it cheap: the instruments already exist
+
+Built for coverage, each also a security instrument. Nothing here needs new
+transport work.
+
+| instrument | what it gives |
+|---|---|
+| `lib/device/transit.js` | seals ARBITRARY bytes, so a request can be malformed AFTER encryption rather than before |
+| `lib/device/ctap2.js` | CTAPHID directly - frames, channel ids, commands the firmware does not implement |
+| `okmsg.build` | vendor messages framed by hand, so every field can be wrong on purpose |
+| `flash.bin`, dumpable | reads storage out of band, which is how "should not reveal" is checked at all |
+
+**And `_FORTIFY_SOURCE` is the part a physical key cannot offer**: the emulator
+builds with it, so an overflow ABORTS where it happens instead of corrupting
+whatever was next in memory. That is how the RSA-4096 one-byte overflow was
+found, and it is the strongest single argument for doing this work here rather
+than against a key. See EXPLAINER.
+
+### Candidate rows, not exhaustive
+
+- [ ] malformed and oversized length fields on every framed message
+- [ ] out-of-order and forged continuation markers - `buffer[6]` means two
+      different things in two chunked sends, which is a parser confusion waiting
+      to be aimed
+- [ ] `opt3` manipulation on the tunnel: the high-water mark is a DROP rule, so
+      it is also a replay and truncation surface
+- [ ] **the zero-IV keystream reuse question on the transit box.** Every message
+      in a session is AES-256-GCM under the same key with a TWELVE-BYTE ZERO IV,
+      tag discarded - one keystream XORed against every message in both
+      directions. That is the firmware's design and mirroring it is the only way
+      to talk to it; what nobody has done is assess whether it is exploitable in
+      practice - what a passive observer of two messages recovers, and whether
+      any message is attacker-chosen.
+- [ ] unknown vendor ids reaching the CTAPHID stack, which the dispatcher's
+      `default:` hands to `recv_fido_msg()` - a parser reached by a path its
+      callers did not intend
+- [ ] refusal paths asserted WITH controls: every "Error not in config mode" and
+      "Error device locked" is a security property arriving where a client sees
+      it, and each is worth one test proving the operation would otherwise have
+      succeeded
 
 ---
 
@@ -994,8 +1134,8 @@ that file skipped and never touched the key.
 
       Sanity is clean for the same reason it is clean under `--isolate`: those
       files are `device: false`, so there is no device state to spoil. The four
-      session-scoped GUI files (`10-session`, `11`, `12`, `19-stop`) are **not in
-      scope and are not debt** - `10-session` starts nw.js and the express server
+      session-scoped GUI files (`10-session`, `11`, `12`, `14`, `19-stop`) are
+      **not in scope and are not debt** - `10-session` starts nw.js and the express server
       and `19-stop` stops them, so running any of them alone would orphan a
       browser and a server. Not run, rather than run and cleaned up after.
 
@@ -1123,12 +1263,15 @@ state to inherit. Files that fail, worst first:
 | `02-cli/09-lib-agent-gpg` | 5/9 |
 | `01-protocol/01-debug-console` | 5/6 |
 
-**`03-gui/10-session`, `11`, `12`, `19-stop` (22 tests) are not in the tally and
-are not debt.** They are structurally non-isolatable BY DESIGN: `10-session`
-starts nw.js and the express server and `19-stop` stops them, which is the
-kit's no-hooks rule working as intended. Running `--isolate` over them would
-start a browser and a server with nothing to stop them and orphan both, so it
-was not run rather than run and cleaned up after.
+**`03-gui/10-session`, `11`, `12`, `14`, `19-stop` are not in the tally and are
+not debt.** They are structurally non-isolatable BY DESIGN: `10-session` starts
+nw.js and the express server and `19-stop` stops them, which is the kit's
+no-hooks rule working as intended. Running `--isolate` over them would start a
+browser and a server with nothing to stop them and orphan both, so it was not run
+rather than run and cleaned up after. `14-gui-encrypt-decrypt` joins them for the
+same reason and keeps its coupling to the minimum the tier allows: one leading
+test establishes the device and the keys, and every later test opens and closes
+its OWN page.
 
 Two files are deliberate rather than lazy even within the tally: the lib-agent
 pair and the composite PGP files are built around ONE long operation with

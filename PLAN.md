@@ -15,25 +15,30 @@ wearing the present tense - and the two adapters drift apart at different rates.
 
 | | emulated | last run | hardware | last run |
 |---|---|---|---|---|
-| sanity | 50 passed, 0 failed | 2026-08-05 17:35Z | 50 passed, 0 failed | 2026-08-05 16:12Z |
+| sanity | 53 passed, 0 failed | 2026-08-06 00:39Z | 50 passed, 0 failed | 2026-08-05 16:12Z |
 | section 1 | 112 passed, 0 failed, 1 skipped | 2026-08-05 21:02Z | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
 | section 2 | 101 passed, 0 failed (gadget) | 2026-08-05 17:35Z | skipped - `client-access` | n/a |
-| section 3 | 78 passed, 0 failed (headless 56 + browser 22) | 2026-08-05 22:00Z | n/a - both tiers drive the emulator by design | n/a |
-| **whole tree** | **341 by arithmetic - it no longer FITS in one run**, see below | 2026-08-05 22:25Z (aborted) | **118 passed, 9 skipped-with-reason** | 2026-08-05 16:24Z |
+| section 3 | 84 passed, 0 failed (headless 56 + browser 28) | 2026-08-06 00:57Z | n/a - both tiers drive the emulator by design | n/a |
+| **whole tree** | **344 passed, 0 failed, 2 skipped** in 1356s - `03-gui/14` landed after it, so the next sweep should read 350 in ~1463s | 2026-08-06 00:39Z | **118 passed, 9 skipped-with-reason** | 2026-08-05 16:24Z |
 
-**THE WHOLE TREE NO LONGER COMPLETES, and that is new as of 2026-08-05.** The
-17:35Z sweep took 879s against a `RUN_MAX` of 900s - twenty-one seconds of
-headroom, which nobody had noticed was the margin. `03-gui/08-pgp-encrypt-decrypt`
-costs 135s, so the 22:25Z attempt was cut off by the run-level watchdog at 903s
-with **225 passed, 0 failed** and section 2 unfinished. Nothing failed; the run
-ran out of budget. Until that is settled (TODO has the row) the honest way to
-measure this tree is **section by section**, which is where every number in the
-rows above comes from, and the total is their sum rather than a run of its own.
+**THE WHOLE TREE STOPPED FITTING IN `RUN_MAX`, AND THAT IS WHY THIS ROW IS A
+REAL RUN AGAIN.** The 17:35Z sweep took 879s against a 900s cap - twenty-one
+seconds of headroom nobody knew was the margin - and the five files that landed
+at 21:02Z took section 1 from 367s to 707s, putting the tree five minutes over
+the cap **hours before anybody noticed**. The 22:25Z attempt was cut off at 903s
+with 225 passed and 0 failed; nothing had failed, the run had run out of budget.
+`RUN_MAX` is now 30 minutes, with the per-section measurements beside it in
+`lib/config.js` so it reads as a ceiling rather than a guess, and the 00:39Z run
+above is the whole tree end to end in **1356s** - which is what those
+measurements predicted, so the arithmetic and the sweep agree again.
 
-**Section 1's 112 is the 17:35Z sweep's 96 plus five new files measured on their
-own** - `19-rsa-keys` 7, `20-second-profile` 3, `21-self-destruct` 2,
-`22-rsa-slot-tail` 2, `23-rsa-tunnel` 2 (+1 gated off) - so it is arithmetic
-again, which is what the warning below is about. All sixteen are green three ways
+The lesson is in TODO: **a per-file cost is invisible against a per-run cap.**
+Every one of those six files was measured, green and cheap on its own.
+
+**Section 1's 112 was the 17:35Z sweep's 96 plus five new files measured on
+their own** - `19-rsa-keys` 7, `20-second-profile` 3, `21-self-destruct` 2,
+`22-rsa-slot-tail` 2, `23-rsa-tunnel` 2 (+1 gated off). It is confirmed by the
+00:39Z whole-tree run rather than only by that arithmetic. All sixteen are green three ways
 each: natural order, `--isolate` and `--reverse`. Neither adapter has run the whole
 tree since, and **the hardware column has seen none of the five**. All five are
 section 1 and therefore hardware-capable in principle, but three carry gates that
@@ -52,8 +57,8 @@ All three are the gates working rather than gaps.
 fixed. The useful part is the correlation: every file written since `--reverse`
 became a gate passes it, and every failure predates the rule.
 
-**Both columns were single sweeps as of 17:35Z**, which they had not been before
-and which the emulated one no longer is - see the run-max row above:
+**Both columns were single sweeps as of 17:35Z**, and the emulated one is again
+as of 2026-08-06 00:39Z - 344 passed, 0 failed, 2 skipped, 1356s:
 
 - **Emulated**: `okt run` with no target, one process, all four sections in
   order. 319 passed, 0 failed, 1 skipped, 879s, run `20260805-172107-935299`.
@@ -67,19 +72,18 @@ and which the emulated one no longer is - see the run-max row above:
 Until this run the emulated column was per-file arithmetic, summed as each file
 landed rather than produced by any single run. It agreed exactly, which is
 reassuring rather than redundant: a per-file total can hide a file that only
-passes when it runs alone, and this one does not. **That agreement is what makes
-losing the whole-tree run survivable** - the per-section totals are known to sum
-correctly, so the arithmetic is checked rather than merely assumed. It is still
-worth restoring, because it is the only measurement that catches a file which
-only passes when its neighbours do not run.
+passes when it runs alone, and this one does not. It has now agreed twice, the
+second time across a `RUN_MAX` change and a section that had grown by six files -
+which is the property worth having, since it is the only measurement that catches
+a file passing solely because its neighbours did not run.
 
 Section 3 remains the most drift-exposed section - its browser tier depends on
 nw.js and the onlykey.github.io checkout rather than on anything this repo pins -
 so it is still the one to re-measure when either of those moves. Note it must run
 as a SECTION, never file by file: `10-session` starts nw.js and the express
 server, `19-stop` stops them, and the session is held across files by the module
-cache. Its 78 IS a section sweep, run 22:00Z after `08-pgp-encrypt-decrypt`
-landed, rather than 72 plus arithmetic.
+cache. Its 84 IS a section sweep, run 00:57Z after both PGP-page files landed,
+rather than a total plus arithmetic.
 
 Run directories under `runs/` carry the authoritative record - each has a
 `status.json` with `startedAt`, `finishedAt` and the counts, and `run.log`'s
@@ -228,7 +232,7 @@ the second fails the page is at fault rather than the device.
 | feature | page | old kit, Node | old kit, nw.js | `00-09` headless | `10+` GUI |
 |---|---|---|---|---|---|
 | `connect` | all of them | - | - | ✅ `00-fido2-lib` | - |
-| the `_$mode()` matrix - Encrypt Only, Sign Only, Encrypt and Sign, Decrypt Only, Decrypt and Verify | encrypt, decrypt | - | `18` | ✅ `08-pgp-encrypt-decrypt` - all five driven | ☐ |
+| the `_$mode()` matrix - Encrypt Only, Sign Only, Encrypt and Sign, Decrypt Only, Decrypt and Verify | encrypt, decrypt | - | `18` | ✅ `08-pgp-encrypt-decrypt` - all five driven | ✅ `14-gui-encrypt-decrypt` - all five again, in nw.js |
 | X-Wing maths (`age_pqc.js`) | age-derive | - | `15` | ✅ `01-age-pqc-parity` | ☐ |
 | `derive_public_key` / `derive_shared_secret` | password-generator, vault | - | `14` | ✅ `02-derive` | ✅ `11-password-generator` |
 | `derive_xwing_recipient` / `derive_xwing_decap` | age-derive | - | `15` | ✅ `03-xwing-derive` | ✅ `12-age-derive` |
@@ -236,7 +240,7 @@ the second fails the page is at fault rather than the device.
 | loading a composite key | pgp-pqc | `17-nodejs` | - | ✅ `02-cli/05-composite-load` | - |
 | `composite_sign` / `composite_decrypt` | pgp-pqc | `17-nodejs` | `17-nwjs` | ✅ `02-cli/06-composite-ops` - both halves of both operations, and TC-11's whole round trip | ☐ |
 | key selection (`onlykey-pgp.js`) | encrypt, decrypt | - | - | ✅ `07-pgp-keys` | - |
-| `startEncryption` / `startDecryption` | encrypt, decrypt | `18`'s `pgp_env` half | `18` | ✅ `08-pgp-encrypt-decrypt` - **section 3, not section 2**, and measured rather than argued | ☐ |
+| `startEncryption` / `startDecryption` | encrypt, decrypt | `18`'s `pgp_env` half | `18` | ✅ `08-pgp-encrypt-decrypt` - **section 3, not section 2**, and measured rather than argued | ✅ `14-gui-encrypt-decrypt` |
 | age file format (`age_file.js`) | age-derive | - | - | ✅ `04-age-file` | ✅ via `12-age-derive` |
 | vendored openpgp fork (`openpgp_loader.js`) | pgp-pqc | `17-nodejs`'s `openpgp_node` | - | ✅ used by `06` | - |
 | composite blobs (`composite_pgp.js`) | pgp-pqc | `17-nodejs` | - | ✅ `05-composite-blob` | - |
@@ -340,7 +344,7 @@ a section that does not exist yet.
 | ✅ | `14-gui-password-generator` | gui | `03-gui/11-password-generator` | the page's secret cross-checked against the kit's own derivation - two clients, two transports, one device |
 | ✅ | `15-gui-age-derive` (TC-18/19) | gui | `03-gui/12-age-derive` | encrypt and decrypt in the browser, and the file it sealed opened by the kit |
 | ☐ | `17-nwjs-composite-pgp` (TC-11) | gui | — | **stage 6** |
-| ⚠️ | `18-gui-encrypt-decrypt` | gui | `03-gui/08-pgp-encrypt-decrypt` | **the library half is carried over and then some** - all five `_$mode()` modes, checked against openpgp.js rather than against the page's own output. The BROWSER half, `localhost:3000/app/encrypt`, is what is left |
+| ✅ | `18-gui-encrypt-decrypt` | gui | `03-gui/08-pgp-encrypt-decrypt`, `03-gui/14-gui-encrypt-decrypt` | **carried over in both tiers, and then some** - all five `_$mode()` modes headless and again in nw.js, each checked against openpgp.js rather than against the page's own output |
 
 Sections are the kit's own: **sanity** (`test/00-sanity`, no device at all -
 the kit's own oracles against known answers), **protocol** (`test/01-protocol`,
@@ -353,11 +357,10 @@ desktop app).
 section 4 is the one part of this kit with no ancestor at all — which is also
 why it is last.
 
-**13 of 19 carried over, 2 of those partially** - `08-backup-hmac`, whose backup
+**13 of 19 carried over, 1 of those partially** - `08-backup-hmac`, whose backup
 half is more than carried over and whose HMAC settings half is not covered at
-all, and `18-gui-encrypt-decrypt`, whose library half landed as
-`03-gui/08-pgp-encrypt-decrypt` and whose browser half has not.
-`12-non-pqc-regression` was the third partial and is now whole.
+all. `12-non-pqc-regression` and `18-gui-encrypt-decrypt` were the other two
+partials and both are now whole, the second in both tiers.
 
 The sections were checked against what each file actually EXECUTES, not what its
 name suggests, and that moved five rows. The whole PQC cluster - `01`, `02`,
@@ -373,7 +376,7 @@ What that leaves is lopsided, and worth knowing before picking anything up:
 | sanity | 0 | done |
 | protocol | 1 (partial) | nothing - it is `08-backup-hmac`'s HMAC settings half, which is a test to write |
 | cli | 0 | done - every carried-over row has a replacement |
-| gui | 2 (1 partial) | a display, which now exists - `vault`/`chat` are placeholders, not gaps. `18-gui-encrypt-decrypt`'s library half is done; only its page is open |
+| gui | 1 | `17-nwjs-composite-pgp`, which is the pgp-pqc page - `vault`/`chat` are placeholders, not gaps, and `18-gui-encrypt-decrypt` is done in both tiers |
 
 So "get all the tests over" is mostly a CLI problem, not a protocol one. Stage 3
 is done and the section runs; the four rows left there are tests to write rather
@@ -892,6 +895,29 @@ slot fields are worse — two of twenty-eight.
       having: **an age file sealed by the browser is opened by this kit**, with
       its own maths and its own transport. Self-consistency would have proved
       nothing; interoperability is the thing that breaks quietly
+- [x] `14-gui-encrypt-decrypt`: the classic PGP pages in nw.js, all five modes,
+      with the device reached by Chromium's own WebAuthn over the USB gadget. The
+      pairing with `08` is what makes it worth having - the library was proven
+      first, so a failure here is the page, and the two findings it produced are
+      both about wiring rather than about crypto.
+
+      **One of them is in THIS kit and had been claimed-but-false for weeks.**
+      `Page.close()` closed the debugger socket and left the tab running;
+      `11-password-generator`'s "closes its window" test asserts the opposite in
+      its own comment. Nothing noticed because no file had ever opened a SECOND
+      page in one session. It does not present as a leak either: Chromium allows
+      one WebAuthn request at a time PER BROWSER, so an abandoned tab whose
+      startup OKCONNECT is still outstanding kills the next page's handshake with
+      `OperationError: A request is already pending`, the page swallows it, and
+      the run dies on the inactivity watchdog pointing at the device. Fixed, and
+      `14` now waits for each page's handshake to land before doing anything -
+      which is also an assertion worth having on its own.
+
+      The other is about the pages: **the recipients field is a tokenizer**, not
+      the `<input>` it looks like, and it escape()s its value into a hidden
+      element. That is what `startEncryption`'s `'-----BEGIN%'` branch is for, and
+      it is the only way an armored key fits in a field that strips newlines. See
+      TODO for the other two page mechanics.
 - [ ] **`pgp-pqc`, attempted and backed out** - the page's own workflow works and
       the last step does not. What was established, so the next attempt starts
       here rather than rediscovering it. The working copy is `wip/`, which the
@@ -996,6 +1022,130 @@ slot fields are worse — two of twenty-eight.
 - [ ] Services started and stopped by *visible* test files at the section
       boundaries, never hooks; cleanup tracks process groups, because nw.js can
       crash and orphan the server it spawned holding a port
+
+---
+
+## Stage 7 — section 5, security
+
+**PLANNED, NOT BUILT, AND DELIBERATELY AFTER THE SWEEP.** Written down now
+because the reasoning is fresh and because the two harness changes it needs are
+easier to justify while the runs that motivated them are still in the log.
+TODO carries the rows; this is why they exist.
+
+### Why it is a section rather than tests scattered through the others
+
+**Every section so far is organised by what a test NEEDS to run.** That is not a
+filing convention, it is the whole design: section 1's admission test is "does
+this reach the device without a kernel device node", which is exactly why it runs
+on a hosted runner and against a physical key, and why section 2 can do neither.
+The sections are a statement about transport and environment.
+
+**Security is organised by INTENT, and intent cuts across all of that.** A
+malformed vendor write is section-1-shaped, a CLI that reports success for a
+refused load is section-2-shaped, and an origin check is section-3-shaped;
+grouping them by where they run scatters the one property they share. So it gets
+a section, and a section needs an admission test as sharp as section 1's or it
+becomes a junk drawer:
+
+> **Does this send something the device should REFUSE, or look for something it
+> should not REVEAL?**
+
+Negative-space testing. Everything else in this kit asks whether a feature works;
+this asks whether a non-feature is absent. A test that ends up here because it
+"feels security-related" while actually asserting that something WORKS belongs in
+its own section, and the rule is what makes that call without an argument.
+
+**No deliberate security pass has ever been run against this firmware here.**
+Every finding to date arrived sideways - the RSA slot tail was found by reading
+code while writing a coverage test, the RSA-4096 overflow by loading a key a
+feature needed, the `last_request_opt3` clobber by a scripted caller doing what
+no human was fast enough to do. That is a strong prior that the surface repays
+looking at on purpose, not a claim that it is unsound.
+
+### Two harness prerequisites, before any test in it is written
+
+Both are load-bearing enough that a security test written without them would
+produce confident nonsense, so they land first.
+
+**1. A dead device host must be a RECORDED RESULT, not the end of the run.**
+Today a firmware crash aborts everything with exit 2 or 5, and for coverage that
+is exactly right - a device that died mid-suite invalidates whatever came after
+it. Here it is useless, because **"the device died" IS the finding**. The
+RSA-4096 overflow demonstrates both halves: it aborts the device host, so
+`23-rsa-tunnel` has to gate that case off behind `OKT_EXPECT_RSA4096_FIX=yes`
+just to let the file land, and a test cannot observe the abort from the inside
+because the runner classifies a dead host as a run-level abort before any
+assertion executes. The section needs a runner mode where a crash is captured
+with its evidence - the signal, the addon's `[okemu] FATAL:` line and backtrace,
+the request that caused it - and the next case continues against a fresh host.
+
+**2. No negative assertion counts unless a POSITIVE CONTROL in the same test
+fires.** A gate, in the same class as `--isolate` and `--reverse`, because it
+catches the same kind of silent wrongness. A section built on "the device did
+not reveal X" is a section where a broken instrument reads as a pass, and this
+kit has already produced three of those in a single day:
+
+| what read as absence | what it actually was |
+|---|---|
+| no plaintext in the RSA slot tail | `pqc.readyForKeygen()` RESTARTS, and a reboot zeroes the global that held the residue |
+| still no plaintext, second attempt | `flash.bin` is word-reversed, so the search was looking for the wrong byte order |
+| silence from an unknown vendor message id | a CTAPHID error frame on the vendor interface - the test expected silence and was wrong |
+
+The first two would have closed a real finding as "nothing there". The pattern to
+generalise is `01-protocol/22-rsa-slot-tail`'s: it writes a known marker through
+a path that is NOT encrypted, finds it, and only then believes an absence
+elsewhere in the same dump. Stated as a rule - **prove the instrument in the same
+test, or the absence means nothing.**
+
+### Gating
+
+**Emulated-only by default, hardware behind an explicit opt-in** - the shape
+`fido-reset` and `full-wipe` already use, with the reason string naming the cost.
+Provoking malformed writes, oversized lengths and deliberate crashes against a
+physical key is a separate risk conversation, and the gate is where that
+conversation gets recorded rather than assumed.
+
+### The instruments already exist, which is what makes this cheap
+
+Nothing here needs new transport work. The pieces were all built for coverage and
+each happens to be a security instrument as well:
+
+| instrument | what it gives a security test |
+|---|---|
+| `lib/device/transit.js` | seals ARBITRARY bytes to the device, so a request can be malformed after encryption rather than before |
+| `lib/device/ctap2.js` | speaks CTAPHID directly - frames, channel ids, commands the firmware does not implement |
+| `okmsg.build` | frames vendor messages by hand, so every field can be wrong on purpose |
+| `flash.bin`, dumpable | reads the device's storage out of band, which is how "should not reveal" is checked at all |
+
+**And `_FORTIFY_SOURCE` is the part a physical key cannot offer.** The emulator
+builds the firmware with it, so a buffer overflow ABORTS at the point of the
+overflow instead of corrupting whatever was next in memory. That is how the
+RSA-4096 one-byte overflow was found and it is a capability, not an accident: on
+real hardware the same write lands silently and surfaces - if it surfaces at all
+- as something unrelated much later. It belongs in EXPLAINER's account of what
+the emulator makes possible, and it is the single strongest argument for doing
+this work here rather than against a key.
+
+### Candidate rows, not exhaustive
+
+- malformed and oversized length fields on every framed message
+- out-of-order and forged continuation markers - `buffer[6]` means two different
+  things in two chunked sends, which is a parser confusion waiting to be aimed
+- `opt3` manipulation on the tunnel: the high-water mark is a *drop* rule, so it
+  is also a replay and truncation surface
+- **the zero-IV keystream reuse question on the transit box.** Every message in a
+  session is AES-256-GCM with the SAME key and a TWELVE-BYTE ZERO IV, tag
+  discarded - so it is one keystream XORed against every message both ways. That
+  is the firmware's design and mirroring it is the only way to talk to it, but
+  nobody has assessed whether it is exploitable in practice: what a passive
+  observer of two messages recovers, and whether any message is attacker-chosen
+- unknown vendor ids reaching the CTAPHID stack, which the dispatcher's
+  `default:` hands to `recv_fido_msg()` - a parser reached by a path its callers
+  did not intend is the classic shape
+- refusal paths asserted WITH controls: every "Error not in config mode" and
+  "Error device locked" is a security property arriving where a client sees it,
+  and each is worth one test that proves the operation would otherwise have
+  succeeded
 
 ---
 

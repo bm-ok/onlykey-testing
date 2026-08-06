@@ -50,14 +50,7 @@ const { PINS } = require('../../lib/config');
 const { IFACE, okmsg } = require('../../lib/device');
 const webenv = require('../../lib/webenv');
 const pqc = require('../../lib/pqc');
-
-const CHUNK = 57;                    // vendor-interface payload per report
-const SLOT_SIGN = 2;                 // slotid() sends OKSIGN here
-const SLOT_DECRYPT = 1;              // ...and everything else here
-const FEATURE_SIGN = 64;             // bit 6 of the RSA type byte
-const FEATURE_DECRYPT = 32;          // bit 5
-const TYPE_2048 = 2;                 // the low nibble is the modulus in 128-byte units
-const RSA_2048_BYTES = 256;
+const { pgpRsaKey, loadSlots, RSA_2048_BYTES } = require('../../lib/pgp-rsa');
 
 /* done_process_packets()'s end-of-priming print - the press window opens here. */
 const PRIMED = /Encrypted Buffer/g;
@@ -73,98 +66,6 @@ describe('the web app\'s encrypt and decrypt pages, at the library tier', {
   timeoutMs: 300000,
 }, () => {
   const verbose = () => (process.env.OKT_WEBLIB_VERBOSE === 'yes' ? console : undefined);
-
-  /**
-   * A PGP key whose two halves are the two RSA slots the pages hardcode.
-   *
-   * openpgp.js reports the factors as `privateParams.p` / `.q`; the device is
-   * given P||Q and nothing else and recomputes D, DP, DQ and QP itself with E
-   * hardcoded to 65537 - which openpgp.js also chose (asserted below), so the
-   * two halves describe the same key rather than merely the same modulus.
-   *
-   * The ORDER is opposite to every other RSA test in this kit and does not
-   * matter, which was measured rather than assumed: openpgp.js emits p < q
-   * (RFC 4880's convention) and node:crypto's JWK export emits p > q (PKCS#1's),
-   * and 19-rsa-keys and 23-rsa-tunnel load the latter. Both sign and decrypt
-   * correctly, because the firmware recomputes the CRT parameters from whatever
-   * it was handed rather than assuming which factor is which.
-   */
-  async function pgpRsaKey(openpgp, userIDs) {
-    const { privateKey, publicKey } = await openpgp.generateKey({
-      type: 'rsa', rsaBits: 2048, userIDs, format: 'object',
-    });
-    const half = (packet) => ({
-      pq: Buffer.concat([
-        Buffer.from(packet.privateParams.p), Buffer.from(packet.privateParams.q),
-      ]),
-      n: Buffer.from(packet.publicParams.n),
-      e: Buffer.from(packet.publicParams.e),
-    });
-    return {
-      privateKey,
-      publicKey,
-      armored: publicKey.armor(),
-      primary: half(privateKey.keyPacket),
-      sub: half(privateKey.subkeys[0].keyPacket),
-    };
-  }
-
-  /* An unsolicited multi-report answer, gathered off the vendor interface. */
-  async function collectVendor(device, since, want, { signal, timeoutMs = 30000 }) {
-    const expected = Math.ceil(want / 64);
-    const deadline = Date.now() + timeoutMs;
-    let reports = device.reportsSince(IFACE.VENDOR, since);
-    while (reports.length < expected && Date.now() < deadline) {
-      await device.sleep(100, { signal });
-      reports = device.reportsSince(IFACE.VENDOR, since);
-    }
-    return Buffer.concat(reports).subarray(0, want);
-  }
-
-  /**
-   * Put the requested halves of `key` into their slots, and prove they landed.
-   *
-   * One config-mode session covers both writes; the readback needs a different
-   * state entirely, because OKGETPUBKEY is REFUSED in config mode - it prints to
-   * the console and sends no vendor reply at all, so a client that writes a key
-   * and reads it back without leaving first sees the read time out with nothing
-   * to explain it (12-cli-slots).
-   */
-  async function loadSlots(device, wanted, { signal, assert, log }) {
-    await pqc.readyForKeygen(device, { signal });
-
-    for (const w of wanted) {
-      const since = device.mark(IFACE.VENDOR);
-      for (let i = 0; i < w.half.pq.length; i += CHUNK) {
-        device.sendVendor({
-          msg: okmsg.MSG.OKSETPRIV,
-          slot: w.slot,
-          /* The KEY going in carries the TYPE BYTE in buffer[6] on every report -
-           * not the continuation marker an operation payload carries. See
-           * 19-rsa-keys; swapping them gives "Error invalid RSA type". */
-          field: TYPE_2048 | w.feature,
-          payload: w.half.pq.subarray(i, i + CHUNK),
-        });
-        await device.sleep(150, { signal });
-      }
-      const ack = await device.waitHid(IFACE.VENDOR,
-        { since, match: /Successfully|Error/, timeoutMs: 30000, signal });
-      assert.match(okmsg.text(ack).trim(), /Successfully set RSA Key/,
-        `storing the key in RSA slot ${w.slot}: ${okmsg.text(ack).trim()}`);
-    }
-
-    await device.restart({ signal });
-    await device.ensureUnlocked(PINS.primary, { signal });
-
-    for (const w of wanted) {
-      const since = device.mark(IFACE.VENDOR);
-      device.sendVendor({ msg: okmsg.MSG.OKGETPUBKEY, slot: w.slot, field: 0 });
-      const published = await collectVendor(device, since, RSA_2048_BYTES, { signal });
-      assert.bytes(published, w.half.n,
-        `RSA slot ${w.slot} published a different modulus than the PGP key it was given`);
-      log(`RSA slot ${w.slot} holds the ${w.what} half, modulus ${published.length} bytes`);
-    }
-  }
 
   /**
    * The library, connected, with the two things the PAGES supply rather than the
@@ -350,9 +251,7 @@ describe('the web app\'s encrypt and decrypt pages, at the library tier', {
         'the device hardcodes E to 65537; a key with any other exponent stores fine ' +
         'and then signs with a D it does not have');
 
-      await loadSlots(device,
-        [{ slot: SLOT_SIGN, feature: FEATURE_SIGN, half: key.primary, what: 'signing (primary)' }],
-        { signal, assert, log });
+      await loadSlots(device, key, ['sign'], { signal, assert, log });
 
       const { pgp } = await connect(device, key.armored, { signal });
       pgp._$mode('Sign Only');
@@ -411,9 +310,7 @@ describe('the web app\'s encrypt and decrypt pages, at the library tier', {
       const mine = await pgpRsaKey(openpgp, [USER]);
       const recipient = await pgpRsaKey(openpgp, [SENDER]);
 
-      await loadSlots(device,
-        [{ slot: SLOT_SIGN, feature: FEATURE_SIGN, half: mine.primary, what: 'signing (primary)' }],
-        { signal, assert, log });
+      await loadSlots(device, mine, ['sign'], { signal, assert, log });
 
       const { pgp } = await connect(device, mine.armored, { signal });
       pgp._$mode('Encrypt and Sign');
@@ -453,9 +350,7 @@ describe('the web app\'s encrypt and decrypt pages, at the library tier', {
       const openpgp = webenv.openpgp();
       const key = await pgpRsaKey(openpgp, [USER]);
 
-      await loadSlots(device,
-        [{ slot: SLOT_DECRYPT, feature: FEATURE_DECRYPT, half: key.sub, what: 'encryption (subkey)' }],
-        { signal, assert, log });
+      await loadSlots(device, key, ['decrypt'], { signal, assert, log });
 
       const message = await openpgp.encrypt({
         message: await openpgp.createMessage({ text: PLAINTEXT }),
@@ -499,9 +394,7 @@ describe('the web app\'s encrypt and decrypt pages, at the library tier', {
     const key = await pgpRsaKey(openpgp, [USER]);
     const sender = await pgpRsaKey(openpgp, [SENDER]);
 
-    await loadSlots(device,
-      [{ slot: SLOT_DECRYPT, feature: FEATURE_DECRYPT, half: key.sub, what: 'encryption (subkey)' }],
-      { signal, assert, log });
+    await loadSlots(device, key, ['decrypt'], { signal, assert, log });
 
     const message = await openpgp.encrypt({
       message: await openpgp.createMessage({ text: PLAINTEXT }),
