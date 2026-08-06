@@ -20,7 +20,7 @@ of the old reasoning.
 
 | | what | why it is next |
 |---|---|---|
-| 1 | **section 4, the OnlyKey APP** (§5, "Section 4 - the OnlyKey app") | **ASSIGNED. Start here.** The one part of the kit with no ancestor in any kit, so unlike everything else on this list there is no file to read for what it should cover. §5 has what is known and, more usefully, what is not |
+| 1 | **section 4, the OnlyKey APP** (§5, "Section 4 - the OnlyKey app") | **ASSIGNED, AND STARTED - 15 tests green as of 2026-08-06 04:13Z.** The session plus Slots, Keys and Backup are landed; §5 says where each got to. What is left, in order: the **restore half** of the Backup tab (measured, unsettled - see the premises table), then the untouched tabs - **Setup, Preferences, Advanced, Tools**. **The Firmware tab is deliberately excluded**, because it reaches `OKFWUPDATE`. Do not re-derive this section from scratch: it turned out to HAVE an ancestor, and §5's four unknowns are now answered |
 | 2 | HMAC challenge-response (§2, "Section 1 - the protocol surface") | NOT "HMAC settings" - that half is already done by `11-cli-settings`. This is the Yubikey-style feature the old kit could not reach, and **it is not a test-writing job**: two IPC verbs have to be added to the emulator's protocol first. Those same two verbs are the only thing standing between the kit and §6's keyboard-interface surface, so this row buys a feature test and an attack surface at once |
 | 3 | `13-pgp-pqc` (§4, "Section 3 - the pages that are left") | the only page left, and the one item here that needs a browser in front of a human. Page debugging, not coverage |
 | — | **section 5, SECURITY** (§6) | PLANNED, after the sweep, by decision. Its two harness prerequisites - a recorded crash rather than an aborted run, and a positive control for every negative assertion - land BEFORE any test in it |
@@ -68,6 +68,16 @@ headings below still describe a world that ended that night:
 | `03-gui/14-gui-encrypt-decrypt` | 6, 107s with its session | the same five through the PAGES, in nw.js over the USB gadget |
 | `02-cli/16-cli-key-files` | 3 in 35s | `loadpqc` / `loadkey` on their accepting paths. Section 2 finished |
 
+**And what landed on 2026-08-06, all section 4** - the first time any kit has
+driven the OnlyKey App against a device rather than a mocked `chrome.hid`:
+
+| file | tests | what it settled |
+|---|---|---|
+| `04-app/10-session` + `19-stop` | 7 in 7s | the App runs under the kit's own nw.js 0.114 with `chrome.hid` working, shares the gadget with the kit's device host, and stops without leaking |
+| `04-app/11-app-slot-config` | 4 | a label and a PASSWORD written through the App's form, the password read back by PRESSING THE BUTTON. Two defects: [FINDING-app-slot-button-dead-window.md](FINDING-app-slot-button-dead-window.md) |
+| `04-app/12-app-keys` | 2 | a PGP RSA key loaded through the Keys tab, both slots' moduli checked against openpgp.js's own `n`, and the signing/decryption slot convention agreed with `onlykey-cli` |
+| `04-app/13-app-backup` | 2 | a backup the DEVICE typed, accepted by the App's own verifier - two independent readers of one artefact neither of them wrote |
+
 So **both PINs this kit provisioned on every run and had never entered are now
 entered**, the International Travel Edition is a deferred second BUILD rather
 than a test, and four findings are written up for upstream - the two above plus
@@ -83,15 +93,19 @@ tried. Both halves are now done and only `13-pgp-pqc` is left.
 **When a file lands, update its section's `last run` in [PLAN.md](PLAN.md)'s
 counts table.** The emulated and hardware columns carry separate dates because
 they drift apart, and a count with no date reads as current when it is not. The
-emulated column is a whole-tree sweep as of 2026-08-06 02:16Z (353 passed,
-1489s), and every per-section row in that table comes from that same run, so they
-sum; the hardware column is 2026-08-05 16:24Z and has seen none of the files in
-the table above. Section 3 is the one most exposed to drift, since its browser tier
+emulated column WAS a whole-tree sweep as of 2026-08-06 02:16Z (353 passed,
+1489s) whose per-section rows all came from that one run and summed exactly -
+**and it no longer sums**, because section 4's row is a later measurement of its
+own (15 passed, 04:13Z) and the tree has not run end to end since. PLAN says so in
+place rather than leaving the arithmetic to mislead. The hardware column is
+2026-08-05 16:24Z and has seen none of the files in either table above. Section 3 is the one most exposed to drift, since its browser tier
 depends on nw.js and the onlykey.github.io checkout rather than on anything this
 repo pins.
 
-**And watch the run budget when a file lands.** `RUN_MAX` is 30 minutes and the
-tree takes 1489s - 83% of it. That is not a lot of room, and the last time it ran
+**And watch the run budget when a file lands.** `RUN_MAX` is 30 minutes; the tree
+was 1489s (83%) before section 4 existed, and section 4 measures 121s on its own,
+so a whole-tree run is now roughly **1610s - about 89% of the cap**, and unmeasured
+as a whole. That is not a lot of room, and the last time it ran
 out nobody noticed for hours, because a per-file cost is invisible against a
 per-run cap. See the row under "Kit-side items".
 
@@ -453,7 +467,7 @@ on, and the first changes what that row costs:
 | the slot buttons are dead / the App is stuck | **NO to both - `getAttribute('open')` was the wrong instrument, and it cost three iterations.** `showModal()` sets the `open` attribute to the **EMPTY STRING**, so `!!el.getAttribute('open')` is false for a dialog that is wide open. The dialog had been opening all along. The App's own selenium test compares `getAttribute('open')` to `'true'` and is right only because **WebDriver normalises boolean attributes**; anything reading the raw DOM must use the `open` PROPERTY. A rule ported out of a selenium suite is not automatically true outside it |
 | the App binds its slot buttons when it shows them | **NO - there is a ~1.2s window in which they are visible and dead.** `initSlotConfigForm()` does the `addEventListener` and is reached only from `handleGetLabels()`, so the binding waits for the first OKGETLABELS reply while the panel is revealed from the unlocked state. Measured 1163ms, with a click issued from inside the page in the same frame the button was first laid out - and with a positive control (a click after binding opens the dialog). A real user reaches it by clicking a slot as soon as it appears. [FINDING-app-slot-button-dead-window.md](FINDING-app-slot-button-dead-window.md) |
 | the App sets NEXTKEY3 to Return without being asked (its own FIXME) | **NOT REPRODUCIBLE against a device.** Configuring a password through the UI and pressing types the password and nothing after it. Control in the same test: writing NEXTKEY3 by hand over the vendor interface makes the same press type `"\n"`, so the absence is real rather than a decoder that drops Returns. `04-app/11` asserts the measured behaviour and fails if a Return ever appears |
-| "Successfully set RSA Key" means the key is durable | **NO - a reboot immediately after the ack LOSES IT, and the layer is UNVERIFIED.** Auto-loading a PGP key writes slot 2 then slot 1; rebooting as soon as the second ack arrives leaves slot 2 readable and slot 1 answering "Error no RSA Private Key set in this slot". Isolated by changing one thing: with everything else fixed, adding a 6s settle before the restart makes it pass and removing it makes it fail, three times each. **Do not report this upstream yet** - the missing piece is the slot's TYPE byte, which lives in EEPROM, and the emulator writes the whole EEPROM during shutdown rather than on each write. So this may be an emulator persistence artifact rather than firmware. **How to tell:** run `04-app/12-app-keys` against a physical key, where EEPROM writes are immediate. `04-app/12` carries the settle and says why |
+| "Successfully set RSA Key" means the key is durable | **NO - a reboot immediately after the ack loses the second key, MECHANISM STILL UNKNOWN, and both of my first explanations are DISPROVEN.** Auto-loading a PGP key writes slot 2 then slot 1; rebooting as soon as the second ack arrives leaves slot 2 readable and slot 1 answering "Error no RSA Private Key set in this slot". Isolated by changing one thing - with everything else fixed, adding a 6s settle passes and removing it fails, three times each. `04-app/12` carries the settle and says why. **Disproven 1: "the emulator batches EEPROM until shutdown."** `okemu_eeprom_write()` is an immediate per-byte `pwrite` (`emulator/src/ok_hal.cpp:594`), and flash is `MAP_SHARED` on `flash.bin`, which survives a SIGKILL. **Disproven 2: "the ack precedes the writes."** In `rsa_priv_flash()` the order is `okeeprom_eeset_rsakey()`, then `okcore_flashset_common()`, then `hidprint("Successfully set RSA Key")` - the ack is last. **What the failure actually means:** `okcore.cpp:5436` emits that string when `okeeprom_eeget_rsakey(&type, slot)` returns **type == 0**, so slot 1's EEPROM type byte is absent after the reboot despite an ack that should have followed its write. **The cheap next step, and it needs no hardware:** dump `eeprom.bin` from the file's run directory immediately after the second ack and again after the restart, and compare the slot-1 type byte - that separates "never written" from "written and lost", which is the whole question. A hardware run is the confirmation, not the diagnosis |
 | the App can restore a backup, and driving it is a matter of attaching a file | **UNSETTLED, and deliberately not asserted.** With a device-written backup attached to `#restoreSelectFile` over CDP's `DOM.setFileInputFiles`, the App displays "Restoring from backup please wait..." with an empty error box and then **nothing reaches the device** - zero vendor replies and no reboot across 45s, the device still answering `unlocked`. Two readings this could not separate: the App's restore stalls before transmitting (a real defect in a path carrying a whole device's secrets), or a debugger-injected `File` is not one this nw.js's FileReader will read (a harness artefact saying nothing about the App). **What settles it in one run:** wrap `submitRestoreData()` from the page - a top-level function, wrappable the way `initSlotConfigForm` was in `04-app/11` - and see whether it is called and with how many bytes. `#restoreSelectFile` is ALSO a duplicate id (app.html lines 305 and 1040), which cost one iteration on its own |
 | the App ships a harness, so there is something to adopt | **TRUE, but it does not RUN as shipped.** `test/` holds FOUR files, not the three tabled in §5: the fourth is `serial.js`, which requires `node-hid` - **not a dependency of that repo** - and `chalk`. Mocha's default glob is `test/*.js`, so `npm test` dies at that require; past it, `serial.js`'s 1 ms `setInterval` would stop mocha exiting, and `driver.js` launches nw.js at module scope rather than in a hook. Adopting means repairing three defects in somebody else's repo first |
 

@@ -279,6 +279,101 @@ the first test that stores a PIN. The runner reads the rung back and treats it
 as a capability, so a run that lands there **skips the crypto files with a
 stated reason** instead of reporting a pile of crashes.
 
+## Section 4's App tier: how to drive the OnlyKey App
+
+Everything here was learned by driving `OnlyKey-App` against the emulated
+device, and none of it is guessable from its source. **It is a different
+codebase from section 3** - that one is `onlykey.github.io` in a browser over
+the WebAuthn tunnel; this is a packaged nw.js app reaching the device with
+`chrome.hid`. `lib/app.js` is its session, `lib/gui.js` is section 3's, and they
+share only the process plumbing.
+
+### It is an application, not a URL
+
+nw.js is handed the **build directory** and the app opens its own window, so
+`AppSession.attach('app')` attaches to a window that already exists.
+`Target.createTarget` - what `GuiSession.open()` does - would open a second,
+empty window beside the real one and drive that.
+
+**`build/` is gitignored**, so it is never in a fresh checkout and `gulp build`
+is a prerequisite rather than a convenience. It is cheap (~1.8s; a file copy plus
+sourcemaps, no bundler) so `10-session` rebuilds every run instead of guessing
+whether an existing build is stale. `clean` runs first, so nothing may be edited
+under `build/` and expected to survive. Getting gulp needs
+`npm install --ignore-scripts` in the App checkout - **the flag is deliberate**,
+since `nw` is a runtime dependency there and a plain install pulls a ~150MB
+runtime the kit does not use.
+
+### `page.close()` must NOT close the window - the opposite of section 3
+
+There, a leaked tab holds an outstanding WebAuthn request and breaks the next
+page's handshake. Here **the window IS the application**, and closing it ends the
+session every later file depends on. So `attach()` deliberately does not give the
+page a `targetId`, `close()` drops only the connection, and `19-stop` takes the
+process group down.
+
+### The App must re-find the device after every restart
+
+Each test FILE gets its own device host, so between files - and after any
+`device.restart()` - the device is unplugged and replugged as far as the App is
+concerned. It recovers on `onDeviceAdded`, but not instantly, and a fixed wait
+passes most runs and not all. Use **`session.waitForDevice(page, device, …)`**,
+which polls the DEVICE between checks - `status()` is real traffic, so it proves
+the device is alive *and* feeds the watchdog (see below). Two files were flaky on
+exactly this before it lived in the session.
+
+### Keep every page wait under the 30s inactivity budget
+
+A page wait produces **no device output**, so a 60s one does not fail its own
+test - it spends the run's no-progress budget and aborts the whole run with a
+watchdog pointing at the device. Section 2 caps its CLI commands at 12s for the
+same reason. Either keep waits under ~20s, or interleave real device calls.
+
+### Controls are DUPLICATED, and only one of each is real
+
+`slot1aConfig` appears **three times** in `app.html` and `restoreSelectFile`
+**twice**. Neither "the first" nor "the one with `data-slot-id`" is a safe rule -
+preferring the data attribute picked an element in a hidden panel and waited a
+minute for a control that was never going to be laid out. **Click whichever
+candidate is actually VISIBLE** (`getBoundingClientRect().width > 0`); a
+zero-width control is not one a user could press. For file inputs, set the files
+on **every** match and then read the counts back from the page - CDP's
+`DOM.setFileInputFiles` reports success even when the element it was given is not
+the one the App reads.
+
+### A dialog's `open` ATTRIBUTE is the empty string
+
+`showModal()` sets `open=""`, so `!!el.getAttribute('open')` is **false for a
+dialog that is wide open**. Use the `open` **property**. The App's own selenium
+test compares `getAttribute('open')` to `'true'` and is right only because
+WebDriver normalises boolean attributes - a rule ported out of a selenium suite
+is not automatically true outside it. This cost three debugging iterations.
+
+### Slot buttons are clickable ~1.2s before anything is bound to them
+
+`initSlotConfigForm()` does the `addEventListener`, and the only thing that calls
+it during startup is **`handleGetLabels()`** - so the binding waits for the first
+`OKGETLABELS` reply while the panel is revealed from the unlocked state. A click
+in that window is silently discarded. It is a real defect
+([FINDING-app-slot-button-dead-window.md](FINDING-app-slot-button-dead-window.md)),
+and for a test the answer is to **click, check, click again**, exactly like
+section 1's mid-fade press retry. Log the click count so a change in the size of
+that window reads as a number rather than as a flake.
+
+### Form fields are gated by their own checkboxes
+
+`Wizard.setSlot()` walks a `fieldMap` whose KEYS are checkbox ids -
+`chkSlotLabel`, `chkPassword` - and each field is written only `if (isChecked)`.
+Filling a text input alone submits a form that agrees to send nothing, which is
+indistinguishable from a device that ignored the write unless you know to look.
+
+### The Firmware tab is off limits
+
+It reaches `OKFWUPDATE`, which on a physical key **locks the bootloader and
+permanently converts a developer key into a production key**. No file in section
+4 opens that tab. If one ever does, it carries `requires: ['emulated']` and is
+driven only to its interlocks.
+
 ## Seeing what a page is actually showing (authoring only)
 
 When a browser-tier or app-tier test does not land where you expected, you can
@@ -626,21 +721,23 @@ test/00-sanity/     built    no device at all - the kit's own oracles
 test/01-protocol/   built    Node over the wire protocols
 test/02-cli/        built    the CLI through the Python venv
 test/03-gui/        built    the WEB app (onlykey.github.io): 00-09 headless, 10+ in nw.js
-test/04-app/        stub     the OnlyKey APP (OnlyKey-App), a packaged nw.js app
+test/04-app/        built    the OnlyKey APP (OnlyKey-App), a packaged nw.js app
 ```
 
 **Sections 3 and 4 are different codebases, and both get called "the app".**
 Section 3 is `onlykey.github.io`, served by express and opened in the kit's own
 nw.js, reaching the device over the WebAuthn tunnel. Section 4 is
 `OnlyKey-App`, a packaged Chrome-App-style nw.js application that reaches the
-device with `chrome.hid`. Nothing in `lib/gui.js` has ever been pointed at the
-second. See TODO's §5.
+device with `chrome.hid`. `lib/gui.js` drives the first and `lib/app.js` the
+second; they share only the process plumbing. See TODO's §5 and "Section 4's App
+tier" above.
 
-**Only section 4 is still a stub, and this block said otherwise until
-2026-08-05** - it was written when sections 2 and 3 were empty and nothing
-updated it as they filled, which is the failure PLAN's dated counts table exists
-to prevent. Sections 2 and 3 carry 101 and 78 passing tests; PLAN has the numbers
-and when each was measured.
+**Every section is now built, and this block has twice said otherwise** - it
+claimed sections 2 and 3 were stubs until 2026-08-05 and section 4 until
+2026-08-06, each time because it was written when that section was empty and
+nothing updated it as it filled. That is the failure PLAN's dated counts table
+exists to prevent, and the reason to distrust any count in this file that does
+not carry a date. PLAN has the numbers and when each was measured.
 
 The sanity section runs first and declares `device: false`, so the runner never
 starts a device host for it: it checks the kit's own pure-JS oracles - CBOR, the
@@ -662,9 +759,14 @@ in-process bus like section 1.
 - **The hardware adapter** is a declared seam with a stub behind it
   (`lib/device/hardware.js`), which documents what it has to do and why the
   emulated path is shaped the way it is.
-- **Section 3's browser tier for the PGP pages.** `/app/encrypt`, `/app/decrypt`
-  and `/app/pgp-pqc` are the pages nothing drives in nw.js. Everything under all
-  three is proven headless, so a failure there means the page.
+- **Section 3's `/app/pgp-pqc` page**, and only that one. This bullet named
+  `/app/encrypt` and `/app/decrypt` as well until 2026-08-06; both are driven in
+  nw.js by `03-gui/14-gui-encrypt-decrypt`. Everything under pgp-pqc is proven
+  headless, so a failure there means the page.
+- **Section 4's remaining tabs.** Slots, Keys and Backup are driven; the
+  **restore** half of Backup is measured but unsettled (see TODO's premises
+  table), and **Setup, Preferences, Advanced and Tools** are untouched. The
+  **Firmware** tab is deliberately excluded - it reaches `OKFWUPDATE`.
 - **The GitHub Actions workflow is written and PARKED**, not missing: it exists,
   it is `workflow_dispatch` only, and it has never run on GitHub. Do not dispatch
   it and do not add triggers - see TODO for why hosted CI is being re-envisioned
