@@ -21,7 +21,7 @@ of the old reasoning.
 | | what | why it is next |
 |---|---|---|
 | 1 | **section 4, the OnlyKey APP** (§5, "Section 4 - the OnlyKey app") | **ASSIGNED, AND DONE - 28 tests green as of 2026-08-06 14:44Z**, up from 15. **Every tab is driven bar the two that must not be**: the session plus Slots, Keys, Backup, Setup, Preferences and Advanced. **The Firmware tab is excluded** because it reaches `OKFWUPDATE` - and note `16-app-setup` records that the SAME DOOR is on the Setup tab (`LoadFirmware` -> Step11), so the exclusion is not confined to the tab it is named after. **Tools is deliberately NOT a test file** - it is a launcher of external links with no device behaviour, so pinning its hrefs was maintenance without a subject; what mattered is [FINDING-app-tools-origin.md](FINDING-app-tools-origin.md). **What is left is ONE tab: Setup** (`init-panel`), plus the **restore half** of Backup (measured, unsettled - see the premises table). **The Firmware tab is deliberately excluded**, because it reaches `OKFWUPDATE`, and Preferences' `fullWipeModeBtn` is excluded for the same class of reason - both have their PRESENCE asserted so that an absence would be noticed without either being armed. Two findings came out of the new tabs: the Yubico form discards a hex Public ID in total silence (`hexToModhex` throws inside the click handler and nothing catches it), and the Tools tab's four `/app/*` links point at an origin the firmware does not stage. **Advanced also closed a real coverage gap nothing else could reach** - `set_slot()` case 10 (`YUBIAUTH`), one of only two cases with no coverage anywhere, since `onlykey-cli` exposes no route to it |
-| 2 | HMAC challenge-response (§2, "Section 1 - the protocol surface") | NOT "HMAC settings" - that half is already done by `11-cli-settings`. This is the Yubikey-style feature the old kit could not reach, and **it is not a test-writing job**: two IPC verbs have to be added to the emulator's protocol first. Those same two verbs are the only thing standing between the kit and §6's keyboard-interface surface, so this row buys a feature test and an attack surface at once |
+| 2 | HMAC challenge-response (§2, "Section 1 - the protocol surface") | NOT "HMAC settings" - that half is already done by `11-cli-settings`. **THE IPC VERBS ARE BUILT AS OF 2026-08-06, so this IS a test-writing job now** - this row said the opposite until then and a reader would have taken it at face value. `emulator/lib/protocol.js` and `ipc-peer.js` carry `kbdSetReport`/`kbdGetReport`, and `device.kbdSetReport()`/`device.kbdGetReport()` are on the Device API, verified round-tripping 8 bytes from a booted device (emulator `66e4e52`, kit `97ad1bf`). **What is left is the test itself**, and the firmware facts it needs are below - including a slot-selector correction that was made WRONG once and then corrected again, so read the branch table rather than remembering a pair of values. The hardware adapter throws for both verbs by design, so the file must gate `emulated` out loud the way `16-app-setup` does |
 | 3 | `13-pgp-pqc` (§4, "Section 3 - the pages that are left") | the only page left, and the one item here that needs a browser in front of a human. Page debugging, not coverage |
 | — | **section 5, SECURITY** (§6) | PLANNED, after the sweep, by decision. Its two harness prerequisites - a recorded crash rather than an aborted run, and a positive control for every negative assertion - land BEFORE any test in it |
 | — | the International Travel Edition (§3) | DEFERRED until the kit is complete, by decision - a second BUILD, diffed against this one |
@@ -664,21 +664,34 @@ And the two carried-over rows that came over only partly:
         `done_process_packets()` only loads `stored_key_challenge_mode` for slots
         `< 5` or 101..116 - the HMAC key slots are 129 and 130, so neither range
         applies.
-      - The key is **20 bytes** (`Sha1.initHmac(ecc_private_key, 20)`), and the
-        slot selector is `keyboard_buffer[64]` - but **THE VALUES RECORDED HERE
-        WERE WRONG, corrected 2026-08-06 by reading `okcore.cpp:7681`**:
+      - The key is **20 bytes** (`Sha1.initHmac(ecc_private_key, 20)`), and
+        `keyboard_buffer[64]` selects the slot - but **THERE ARE TWO SEPARATE
+        BRANCHES AND THEY USE DIFFERENT VALUES.** This row said `0x30`/`0x38`,
+        was "corrected" to `1`/`3` on 2026-08-06, and that correction was WRONG:
+        both pairs are real and they do different things. Corrected again, with
+        the branch each belongs to, because a value without its branch is what
+        caused the mistake:
 
-        ```c
-        if (keyboard_buffer[64] == 1)      recv_buffer[5] = RESERVED_KEY_HMACSHA1_1;
-        else if (keyboard_buffer[64] == 3) recv_buffer[5] = RESERVED_KEY_HMACSHA1_2;
-        ```
+        | `keyboard_buffer[64]` | branch | what it does |
+        |---|---|---|
+        | `1`, or `3`..`27` | `okcore.cpp:7657` | **WRITES** a key. `1` -> `RESERVED_KEY_HMACSHA1_1`, `3` -> `_2` (`:7681`), higher values are per-slot. Needs `keyboard_buffer[45] == 5 or 0` and `keyboard_buffer[46] == 0x60 or 0x40` |
+        | `0x30`, `0x38`, or `1`..`12` | the challenge branch (`~:7860`) | **CHALLENGES**. `0x30` is Yklib HMAC slot 1, `0x38` is slot 2, and `1`..`12` reads a per-slot HMAC key |
 
-        The selectors are **1 and 3**, not `0x30` and `0x38`. The dispatch
-        condition above them is `keyboard_buffer[64] == 1 || (>= 3 && <= 27)`,
-        so 3..27 is the per-slot range rather than 1..24. `0x60`/`0x40` are real
-        but belong to a DIFFERENT byte - `keyboard_buffer[46]`, which selects
-        "set HMAC key using Yklib". Anything built on the old values would have
-        addressed the wrong slot and been debugged as a firmware fault.
+        So the ORIGINAL row was right about the challenge, which is what this
+        row is for. **The key write splits the 20 bytes**, which is its own
+        trap: `recv_buffer+7 <- keyboard_buffer+22` (16 bytes) and
+        `recv_buffer+23 <- keyboard_buffer+16` (4 bytes), commented "HMAC key
+        split for some reason" in the source.
+      - **The waiting-for-a-press path is chosen by `hmac_challengemode`**, read
+        from EEPROM at the top of the challenge branch: `0` means physical
+        presence is required, `1` means it is not. When presence is not
+        required the firmware sets `CRYPTO_AUTH = 4` and calls
+        `okcrypto_hmacsha1()` inline; otherwise it sets `CRYPTO_AUTH = 3` and
+        `packet_buffer_details[0] = OKHMAC` and waits. **Both paths are worth
+        driving** and neither ever has been.
+      - **`check_crc(keyboard_buffer)` gates the write branch** and is `extern`,
+        defined outside okcore.cpp. A test that writes a key has to mirror it;
+        one that only challenges may not need to. Not yet read - **UNVERIFIED**.
       - Challenge length is inferred, not declared: all-`0x20` in bytes 57..63
         means 32 (KeePassXC's empty buffer), otherwise it scans back from 63 for
         the last non-zero and never goes below 16. **Any challenge under 16 bytes
