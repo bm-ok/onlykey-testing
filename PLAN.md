@@ -19,7 +19,21 @@ wearing the present tense - and the two adapters drift apart at different rates.
 | section 1 | 112 passed, 0 failed, 1 skipped | 2026-08-06 02:16Z | 68 passed, 0 failed, 9 skipped | 2026-08-05 16:24Z |
 | section 2 | 104 passed, 0 failed (gadget) | 2026-08-06 02:16Z | skipped - `client-access` | n/a |
 | section 3 | 84 passed, 0 failed (headless 56 + browser 28) | 2026-08-06 02:16Z | n/a - both tiers drive the emulator by design | n/a |
+| section 4 | 11 passed, 0 failed | 2026-08-06 03:34Z | n/a - needs `client-access`, the gadget | n/a |
 | **whole tree** | **353 passed, 0 failed, 2 skipped** in 1489s | 2026-08-06 02:16Z | **118 passed, 9 skipped-with-reason** | 2026-08-05 16:24Z |
+
+**THE WHOLE-TREE ROW PREDATES SECTION 4 AND NO LONGER SUMS**, said here rather
+than silently corrected by arithmetic, which is the mistake this table has
+already made once. That run was 353 with section 4 as a single skipped stub; the
+section is now 11 passing tests measured on its own at 03:34Z, so the tree is
+**~364 and one skip lighter** - and unmeasured as a whole. Re-run it rather than
+adding the numbers up.
+
+**And note what it does to the budget.** 1489s was already 83% of the 30-minute
+`RUN_MAX`; section 4 adds ~25s of tests plus a `gulp build` and an nw.js launch
+per run. That is not what will break the cap, but it is the third section to
+grow since the cap was last set, and a per-file cost stays invisible against a
+per-run one - see TODO's row on making the budget per-SECTION.
 
 **THE WHOLE TREE STOPPED FITTING IN `RUN_MAX`, AND THAT IS WHY THIS ROW IS A
 REAL RUN AGAIN.** The 17:35Z sweep took 879s against a 900s cap - twenty-one

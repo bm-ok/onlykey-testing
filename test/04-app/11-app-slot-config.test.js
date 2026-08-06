@@ -33,14 +33,14 @@
  */
 'use strict';
 
-const { describe, it } = require('../lib/harness');
-const { IFACE, okmsg } = require('../lib/device');
-const { PINS } = require('../lib/config');
+const { describe, it } = require('../../lib/harness');
+const { IFACE, okmsg } = require('../../lib/device');
+const { PINS } = require('../../lib/config');
 
-const session = require('../lib/app-session-holder');
+const session = require('../../lib/app-session-holder');
 
 /* Named per file, the way section 1 does - there is no shared FIELD export. */
-const FIELD = { LABEL: 1, PASSWORD: 5 };
+const FIELD = { LABEL: 1, PASSWORD: 5, NEXTKEY3: 6 };
 
 /* The slot the App calls "1a" and the firmware calls 1. */
 const SLOT = 1;
@@ -87,26 +87,50 @@ async function openSlotDialog(page) {
     '&& myOnlyKey.isLocked === false',
     { timeoutMs: 20000 });
 
-  const clicked = await page.eval(`(() => {
-    const seen = (el) => el && el.getBoundingClientRect().width > 0;
-    const candidates = [
-      ...document.querySelectorAll('#slot1aConfig'),
-      ...document.querySelectorAll('[data-slot-id="1a"]'),
-    ];
-    const target = candidates.find(seen);
-    if (!target) {
-      return 'FOUND ' + candidates.length + ' slot-1a candidates, none visible';
+  /*
+   * CLICK, CHECK, CLICK AGAIN - and the reason is a defect in the App, written
+   * up in FINDING-app-slot-button-dead-window.md.
+   *
+   * The slot buttons are laid out and hit-testable about 1.2 seconds before
+   * anything is bound to them: the panel is revealed from the unlocked state,
+   * while `initSlotConfigForm()` - which does the `addEventListener` - is only
+   * reached from `handleGetLabels()`, i.e. when the first OKGETLABELS reply
+   * comes back over HID. A click in that window is silently discarded.
+   *
+   * So this retries, the same shape and for the same reason as section 1's
+   * "a press that lands mid-fade is discarded, so press again": the retry IS
+   * the honest instrument, and the count is logged so a change in the size of
+   * that window shows up as a number rather than as a flake.
+   */
+  const dialogOpen =
+    "document.getElementById('slot-config-dialog').open === true";
+
+  let clicked = null;
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    clicked = await page.eval(`(() => {
+      const seen = (el) => el && el.getBoundingClientRect().width > 0;
+      const candidates = [
+        ...document.querySelectorAll('#slot1aConfig'),
+        ...document.querySelectorAll('[data-slot-id="1a"]'),
+      ];
+      const target = candidates.find(seen);
+      if (!target) {
+        return 'NONE-VISIBLE of ' + candidates.length + ' slot-1a candidates';
+      }
+      target.click();
+      return 'clicked a visible slot 1a control of ' + candidates.length + ' candidates';
+    })()`);
+
+    if (!clicked.startsWith('NONE-VISIBLE')) {
+      const opened = await page.waitFor(dialogOpen, { timeoutMs: 3000 })
+        .then(() => true).catch(() => false);
+      if (opened) return `${clicked} (took ${attempt} click${attempt > 1 ? 's' : ''})`;
     }
-    target.click();
-    return 'clicked a visible slot 1a control of ' + candidates.length + ' candidates';
-  })()`);
+    await new Promise((r) => setTimeout(r, 700));
+  }
 
-  if (clicked.startsWith('FOUND')) throw new Error(clicked);
-
-  await page.waitFor(
-    "!!document.getElementById('slot-config-dialog').getAttribute('open')",
-    { timeoutMs: 20000 });
-  return clicked;
+  throw new Error(
+    `the slot dialog never opened after five clicks - last attempt: ${clicked}`);
 }
 
 /** Submit the slot form and wait for the App to close the dialog. */
@@ -179,11 +203,21 @@ describe('app slot config', {
        */
       log(await openSlotDialog(page));
 
+      /*
+       * TICK THE FIELD'S CHECKBOX, or nothing is sent. `Wizard.setSlot()` walks
+       * a `fieldMap` whose KEYS are checkbox ids - `chkSlotLabel` for the label,
+       * `chkPassword` for the password - and each field is only written `if
+       * (isChecked)`. Filling the text input alone submits a form that agrees to
+       * send nothing, which is not distinguishable from a device that ignored
+       * the write unless you know to look.
+       */
       await page.eval(`(() => {
         const label = document.getElementById('txtSlotLabel');
         label.value = ${JSON.stringify(LABEL)};
         label.dispatchEvent(new Event('input', {bubbles: true}));
         label.dispatchEvent(new Event('change', {bubbles: true}));
+        const chk = document.getElementById('chkSlotLabel');
+        if (chk && !chk.checked) chk.click();
       })()`);
       await submitSlot(page);
 
@@ -254,22 +288,26 @@ describe('app slot config', {
     }
   });
 
-  it('appends a RETURN after the password without being asked - NEXTKEY3, pinned as it ships', async ({ device, assert, signal, log }) => {
+  it('does NOT append a Return after the password - the NEXTKEY3 FIXME does not reproduce', async ({ device, assert, signal, log }) => {
     /*
-     * THE APP'S OWN TEST FLAGS THIS AND CANNOT SETTLE IT. Its comment reads:
+     * THE APP'S OWN TEST FLAGS SOMETHING HERE AND CANNOT SETTLE IT. Its comment:
      *
      *   // For some reason, it's also setting NEXTKEY3 to 2 (Return).
      *   // FIXME is this a bug in the form? Should this be unchecked?
      *
-     * It could only see an OKSETSLOT message going to its mock. Whether the
+     * It could only see an OKSETSLOT message reaching its own mock. Whether the
      * device then TYPES a Return is a device question, and this is the first
-     * place able to ask it: configure a password through the UI, press the
-     * button, and look at what came off the keyboard interface after it.
+     * place able to ask it.
      *
-     * PINNED AS IT SHIPS, and written to FAIL when the form is fixed - the
-     * convention this kit uses for behaviour it has decided to record rather
-     * than to bless. If the App stops adding NEXTKEY3, this test is the thing
-     * that says so.
+     * MEASURED, AND IT DOES NOT REPRODUCE: configuring a password through the
+     * UI and pressing the button types the password and nothing after it. So
+     * this test asserts what the App actually does rather than what its comment
+     * claims - the inherited claim was the first thing this file was written to
+     * pin, and pinning it would have recorded a behaviour that is not there.
+     *
+     * Written to FAIL if a Return ever starts appearing, which is the same
+     * convention pointed the other way: if the form does begin sending
+     * NEXTKEY3, that is a change worth a sentence rather than a silent pass.
      */
     await device.ensureUnlocked(PINS.primary, { signal });
 
@@ -306,13 +344,56 @@ describe('app slot config', {
       await new Promise((r) => setTimeout(r, 1500));
 
       const tail = device.keystrokes.slice(device.keystrokes.indexOf(PASSWORD) + PASSWORD.length);
-      log(`what followed the password: ${JSON.stringify(tail)}`);
+      const appendedReturn = /[\r\n]/.test(tail);
+      log(`what followed the App's password: ${JSON.stringify(tail)}`);
 
-      assert.match(tail, /[\r\n]/,
-        'the App no longer appends a Return after a password - if that was ' +
-        'deliberate, this test has done its job and should be updated to ' +
-        'assert the new behaviour (see the FIXME in the App\'s own ' +
-        'configure-slot-test.js)');
+      /*
+       * POSITIVE CONTROL, IN THE SAME TEST - without it this proves nothing.
+       *
+       * "No Return was typed" and "this kit cannot see a Return" are the same
+       * observation until one of them is ruled out, and section 5's rule is
+       * that an absence is worthless unless a control fires beside it. The
+       * decoder maps 0x28 to '\n', but that is a code READ; what settles it is
+       * making the device type one.
+       *
+       * So: write NEXTKEY3 ourselves over the vendor interface - field 6, the
+       * character '2', which is exactly the message the App's own test captured
+       * (`\xff\xff\xff\xff\xe6\x01\x06 2`) - press again, and require the
+       * Return to appear.
+       */
+      const since = device.mark(IFACE.VENDOR);
+      device.sendVendor({
+        msg: okmsg.MSG.OKSETSLOT, slot: SLOT, field: FIELD.NEXTKEY3, payload: '2',
+      });
+      await device.waitHid(IFACE.VENDOR,
+        { since, match: /Successfully set|Error/, timeoutMs: 10000, signal });
+
+      device.keys.clear();
+      let controlTyped = null;
+      for (let attempt = 1; attempt <= 3 && !controlTyped; attempt++) {
+        device.press(SLOT);
+        controlTyped = await device.waitKeystrokes(PASSWORD, { timeoutMs: 8000, signal })
+          .catch(() => null);
+        if (!controlTyped) log(`control press ${attempt} landed mid-fade`);
+      }
+      await new Promise((r) => setTimeout(r, 1500));
+
+      const controlTail = device.keystrokes
+        .slice(device.keystrokes.indexOf(PASSWORD) + PASSWORD.length);
+      log(`control - what followed once NEXTKEY3 was set by hand: ${JSON.stringify(controlTail)}`);
+
+      assert.match(controlTail, /[\r\n]/,
+        'THE INSTRUMENT IS BROKEN, not the App: NEXTKEY3 was set to Return over ' +
+        'the vendor interface and the device still typed none, so nothing this ' +
+        'test says about the App appending one means anything');
+
+      /* Only now is the App's behaviour worth asserting on. */
+      assert.ok(!appendedReturn,
+        'the App DID append a Return after the password it wrote. That is what ' +
+        'its own test comment predicts ("For some reason, it\'s also setting ' +
+        'NEXTKEY3 to 2 (Return). FIXME is this a bug in the form?") and it did ' +
+        'NOT happen when this test was written on 2026-08-06. Something ' +
+        'changed - which is exactly what this test exists to notice.');
     } finally {
       page.close();
     }

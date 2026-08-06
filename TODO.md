@@ -450,6 +450,9 @@ on, and the first changes what that row costs:
 | ...and that fallback is worth a test that provokes it | **NO, and this was MY OWN claim four hours earlier in the same session** - corrected before it shipped, which is the premises table working on its author. `usb_init_serialnumber()` (`OnlyKey-Firmware/usb_desc.c:1032`) **hardcodes `num = 1000000000`**; the Teensy code that would derive a per-device serial from flash is commented out directly above it. So **every device on this firmware presents that serial**, the strict branch always wins, and the fallback is unreachable without lying to the App. The emulator's `SERIAL_NUMBER` is faithful imitation rather than a lucky guess. Latent branch, not a live risk - and the cost of provoking it is in §5 |
 | the gadget's VID/PID live in `lib/gadget.js` | **WRONG FILE** - that is the KIT's own file and a consumer of the values. The source is `emulator/lib/hid-descriptors.js`. Same numbers, so nothing downstream changes; worth correcting because a reader chasing the gadget's identity into the kit finds a copy and believes it |
 | `OnlyKey-App/build/` is checked in, and the question is whether it is current | **NEITHER** - `build/` is **gitignored** (`.gitignore:5`). What is on this workstation is a local artifact from clone time, and it IS current (it differs from `app/` only by an appended sourcemap comment). So a fresh checkout has no `build/` and `gulp build` is unconditional - a CI fact, not a convenience |
+| the slot buttons are dead / the App is stuck | **NO to both - `getAttribute('open')` was the wrong instrument, and it cost three iterations.** `showModal()` sets the `open` attribute to the **EMPTY STRING**, so `!!el.getAttribute('open')` is false for a dialog that is wide open. The dialog had been opening all along. The App's own selenium test compares `getAttribute('open')` to `'true'` and is right only because **WebDriver normalises boolean attributes**; anything reading the raw DOM must use the `open` PROPERTY. A rule ported out of a selenium suite is not automatically true outside it |
+| the App binds its slot buttons when it shows them | **NO - there is a ~1.2s window in which they are visible and dead.** `initSlotConfigForm()` does the `addEventListener` and is reached only from `handleGetLabels()`, so the binding waits for the first OKGETLABELS reply while the panel is revealed from the unlocked state. Measured 1163ms, with a click issued from inside the page in the same frame the button was first laid out - and with a positive control (a click after binding opens the dialog). A real user reaches it by clicking a slot as soon as it appears. [FINDING-app-slot-button-dead-window.md](FINDING-app-slot-button-dead-window.md) |
+| the App sets NEXTKEY3 to Return without being asked (its own FIXME) | **NOT REPRODUCIBLE against a device.** Configuring a password through the UI and pressing types the password and nothing after it. Control in the same test: writing NEXTKEY3 by hand over the vendor interface makes the same press type `"\n"`, so the absence is real rather than a decoder that drops Returns. `04-app/11` asserts the measured behaviour and fails if a Return ever appears |
 | the App ships a harness, so there is something to adopt | **TRUE, but it does not RUN as shipped.** `test/` holds FOUR files, not the three tabled in §5: the fourth is `serial.js`, which requires `node-hid` - **not a dependency of that repo** - and `chalk`. Mocha's default glob is `test/*.js`, so `npm test` dies at that require; past it, `serial.js`'s 1 ms `setInterval` would stop mocha exiting, and `driver.js` launches nw.js at module scope rather than in a hook. Adopting means repairing three defects in somebody else's repo first |
 
 `OKFWUPDATE` is the exception to "check it": it is not to be verified
@@ -1191,32 +1194,35 @@ first and has never been pointed at the second.
       costs nothing and saves the download. The three build packages (`gulp`,
       `gulp-sourcemaps`, `fs-jetpack`) are pure JS and need no install script.
 
-      **WHERE IT GOT TO, 2026-08-06.** `04-app/10-session` and `19-stop` are
-      landed and green (7 tests, 7s) - the session, the build, the window, the
-      chrome.hid check, and a stop that proves the port came free. The first
-      COVERAGE file is **parked in [wip/11-app-slot-config.test.js](wip/11-app-slot-config.test.js)**,
-      the same way `13-pgp-pqc` is: kept without being run, because a file does
-      not land until it is green and this one is not. Its first test passes -
-      the App reports a live connection to the emulated device - and the three
-      that drive the UI do not yet.
+      **WHERE IT GOT TO, 2026-08-06: SECTION 4 IS STANDING UP AND GREEN.**
+      `04-app/10-session`, `11-app-slot-config` and `19-stop` - **11 tests, 23s,
+      green twice.** The App is driven against the emulated device for the first
+      time in any kit, and the two assertions that matter are the ones its own
+      suite structurally cannot make:
 
-      **The one thing left to find, stated precisely so the next attempt does not
-      start from the top.** Clicking the visible slot-1a control does nothing,
-      and the reason is NOT what the first three guesses said:
+      - a slot **LABEL** written through the App's form comes back from the
+        device over this kit's own vendor interface, and
+      - a **PASSWORD** written through the App's form is what the device TYPES
+        when its button is pressed - the keyboard surface, so the secret that
+        comes out is checked against the one that went in, not against an
+        acknowledgement.
+
+      Four things cost a run each and are now written down rather than repeated:
 
       | guess | measured |
       |---|---|
-      | the App is reload-looping on a version it cannot classify | **NO.** Stamped the window and sampled it 8 times over 12s - the stamp survived every one. `version` is `v3.0.4-testc`, `lastChar` is `c`, so `setDeviceType()` classifies it `classic` correctly |
-      | the App never noticed the unlock | **NO.** `isInitialized: true, isLocked: false, deviceType: classic, connection: 2`, and a screenshot shows the Slots tab open with twelve `empty` slots |
-      | the control is missing | **NO - it is TRIPLICATED.** `slot1aConfig` appears **three times** in app.html. The one that is VISIBLE (w=33, inside `<table id="classic-slots" class="ok-classic">`) carries NO `data-slot-id`; the two that carry it are 0x0 in hidden panels. A rule of "first" or "the one with the data attribute" is an accident of document order either way - pick whichever is actually visible |
+      | the App is reload-looping on a version it cannot classify | **NO.** Stamped the window and sampled it 8 times over 12s - the stamp survived every one. `version` is `v3.0.4-testc`, `lastChar` is `c`, so `setDeviceType()` classifies it `classic` correctly. (There IS a `window.location.reload()` in that function's `default:` branch, which is why this was the leading theory) |
+      | the App never noticed the unlock | **NO.** `isInitialized: true, isLocked: false, deviceType: classic, connection: 2`, and a screenshot showed the Slots tab open with twelve `empty` slots |
+      | the control is missing | **NO - it is TRIPLICATED.** `slot1aConfig` appears **three times** in app.html, and the only VISIBLE one carries no `data-slot-id` while the two that do are 0x0 in hidden panels. "First" and "the one with the data attribute" are both accidents of document order; click whichever is actually visible |
+      | the dialog never opened | **IT ALWAYS DID.** `getAttribute('open')` returns the empty string for an open dialog - see the premises table. Three iterations were spent on a detection bug |
 
-      So the click reaches the right element and the dialog still does not open,
-      which points at **`initSlotConfigForm()` not having run yet** at click time:
-      it is what binds `showSlotConfigForm` to those inputs, and it binds only
-      inside `ok-${deviceType}`, so it cannot bind before the device type is
-      known. The next step is to find the event that runs it and wait for a
-      consequence of it, rather than waiting for the button to exist - the same
-      distinction that has now cost this section three iterations.
+      **And two real defects came out of it**, both in
+      [FINDING-app-slot-button-dead-window.md](FINDING-app-slot-button-dead-window.md):
+      the slot buttons are clickable ~1.2s before anything is bound to them, and
+      the App's own NEXTKEY3 FIXME does not reproduce against a device. The first
+      is why `openSlotDialog()` retries and logs its click count - the same shape
+      as section 1's mid-fade press retry, and the run that landed this file took
+      2 clicks on its first dialog and 1 on the rest.
 
       **And one section-wide constraint learned the hard way**: a page wait
       produces no device output, so any wait longer than the **30s inactivity
