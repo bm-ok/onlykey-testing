@@ -26,19 +26,39 @@
  * network request to a third party. Neither belongs in a test run. The hrefs
  * are read from the DOM instead, which is what the assertion needs anyway.
  *
- * THE DESTINATIONS ARE PINNED AS THEY SHIP, AND FOUR OF THEM LOOK WRONG. Every
- * link points at `apps.crp.to`, while every maintained component in this tree
- * uses `onlyagent.app`: `lib/device/tunnel.js:42` pins it, python-onlykey names
- * it in five places as "the fixed derivation origin shared with the web app",
- * and the web app's own client carries `//rpId: 'apps.crp.to'` COMMENTED OUT.
+ * THE DESTINATIONS ARE PINNED AS THEY SHIP, AND THE FOUR `/app/*` ONES POINT AT
+ * A DIFFERENT ORIGIN FROM THE ONE THE DEVICE KNOWS.
  *
- * That matters more than a dead link would, because the four `/app/*` links go
- * to pages whose keys are rpId-derived: `okcrypto_hkdf()` folds the RPID into
- * the derivation, so the same OnlyKey on a different origin produces DIFFERENT
- * keys with no error at all - the failure README describes as surfacing much
- * later as "no identity matched any of the recipients". Whether that is live or
- * merely dead depends on what `apps.crp.to` serves today, which is one HTTP
- * request a maintainer can make and this kit deliberately does not.
+ * State this carefully, because the obvious phrasing - "every maintained client
+ * moved to onlyagent.app and the App did not" - is FALSE and this comment said
+ * it until 2026-08-06. The web app's own source still carries `apps.crp.to`,
+ * including a LIVE one: `src/onlykey-fido2/index.js:106` passes
+ * `"https://apps.crp.to"` as `getAssertion`'s origin argument. So the App's
+ * links are consistent with strings still present in the shipped web client.
+ *
+ * What is nonetheless true, and rests on the FIRMWARE rather than on any
+ * client's convention:
+ *
+ *   | where | what |
+ *   |---|---|
+ *   | `libraries/onlykey/okcrypto.cpp:245` | `const char rpid[] = "onlyagent.app";` - the device stages it |
+ *   | `libraries/fido2/device.cpp:89` | `SHA256("onlyagent.app")`, compared at :112 as the OnlyAgent origin |
+ *   | `onlykey.github.io/BUILD.sh:67` | `echo onlyagent.app > ./docs/CNAME` - the app is DEPLOYED there |
+ *   | `python-onlykey/.../derived_xwing.py:30` | `RPID = "onlyagent.app"` |
+ *
+ * And index.js's `apps.crp.to` is NOT an rpId: `rpId: domain` (:100) and
+ * `appid:` (:103) are both commented out, so no rpId is passed and WebAuthn
+ * defaults it to the RUNTIME ORIGIN - which the CNAME makes `onlyagent.app`.
+ * That constant is a postMessage/origin argument and carries less weight than
+ * it looks like it does.
+ *
+ * So the concern is not "the App is stale against its own client". It is that
+ * `okcrypto_hkdf()` folds the RPID into the derivation and the device has
+ * `onlyagent.app` compiled in, so a page reached at any other origin derives
+ * DIFFERENT keys with no error at all - README's "no identity matched any of
+ * the recipients", much later. Whether `apps.crp.to` still serves the app,
+ * redirects, or is dead is one HTTP request a maintainer can make and this kit
+ * deliberately does not.
  *
  * Pinned as it ships, per the kit's convention: these assertions FAIL the day
  * the links are corrected, and that is the convention working.
@@ -124,7 +144,7 @@ describe('app tools', {
       }
     });
 
-  it('links to apps.crp.to, which every maintained client in this tree replaced with onlyagent.app',
+  it('links to apps.crp.to, while the firmware and the deployed web app use onlyagent.app',
     async ({ assert, log }) => {
       const s = session.get();
       const page = await s.attach('app');
@@ -157,6 +177,16 @@ describe('app tools', {
         assert.equal(derived.length, 4,
           'the number of rpId-derived destinations changed, which changes how much ' +
           'the origin above matters');
+
+        /*
+         * The claim is about the DEVICE's origin, so anchor it to the device's
+         * own constant rather than to any client's. If the firmware ever stops
+         * pinning onlyagent.app, this finding needs re-reading from scratch.
+         */
+        assert.ok(derived.every(([, href]) => !href.includes('onlyagent.app')),
+          'a /app/* link now points at onlyagent.app - the origin matches what ' +
+          'okcrypto.cpp:245 stages, so this finding is fixed and the expectation ' +
+          'should be inverted rather than repaired');
       } finally {
         page.close();
       }
