@@ -119,10 +119,24 @@ describe('app keys', {
        * error can appear in its own error box well after the click. Read that
        * first - it is a better failure message than a device timeout.
        */
+      /*
+       * A FRESH MARK PER ACK, AND THAT IS THE WHOLE POINT.
+       *
+       * `waitHid` re-scans from its `since` on every call and returns the FIRST
+       * match at or after it - it neither consumes the report nor advances the
+       * mark. So a loop that reuses one `since` returns the SAME report twice
+       * and completes as soon as ONE ack has landed. This loop did exactly that
+       * until 2026-08-06: it read two acks off one report, and the test walked
+       * on while the App was still writing its second slot.
+       *
+       * That is what the 6s sleep below was really paying for, which is why the
+       * mechanism behind it read as unexplainable - see the comment there.
+       */
       const acks = [];
+      let waitFrom = since;
       for (let i = 0; i < 2; i++) {
         const ack = await device.waitHid(IFACE.VENDOR,
-          { since, match: /Successfully set RSA Key|Error/, timeoutMs: 25000, signal })
+          { since: waitFrom, match: /Successfully set RSA Key|Error/, timeoutMs: 25000, signal })
           .catch(async () => {
             const err = await page.eval(
               "document.getElementById('rsaFormError').innerText || ''");
@@ -130,6 +144,15 @@ describe('app keys', {
               `the device never acknowledged RSA key ${i + 1}` +
               (err ? ` - the App reported: ${err}` : ' - and the App reported no error'));
           });
+        /*
+         * Advance PAST the report just matched, rather than to "now". Marking
+         * the ring's current end would drop a second ack that arrived while the
+         * first was being handled, which is the same class of race in the
+         * opposite direction.
+         */
+        const seen = device.reportsSince(IFACE.VENDOR, waitFrom);
+        waitFrom += seen.findIndex((r) => r === ack) + 1;
+
         const text = okmsg.text(ack).trim();
         acks.push(text);
         log(`device said: ${text}`);
@@ -151,13 +174,35 @@ describe('app keys', {
      * lib/pgp-rsa.js's loadSlots() restarts before it reads.
      */
     /*
-     * SETTLE BEFORE REBOOTING, and this is a hazard rather than a nicety.
-     * "Successfully set RSA Key" is emitted by the message handler, not by the
-     * flash write completing - so a client that acts on the acknowledgement can
-     * be faster than the device's own commit. Rebooting immediately after the
-     * second ack loses the second key: slot 2 reads back and slot 1 answers
-     * "Error no RSA Private Key set in this slot". Measured three times; the
-     * probe that first showed both slots populated differed only by waiting.
+     * THE SETTLE, AND WHAT IT IS ACTUALLY FOR - REWRITTEN 2026-08-06.
+     *
+     * This used to claim a firmware hazard: that "Successfully set RSA Key" is
+     * emitted before the write commits, so rebooting on the second ack loses
+     * the second key. That explanation is WRONG, and so were the two before it
+     * (see TODO's premises table). Three things rule it out:
+     *
+     *   - The ack is emitted LAST. `rsa_priv_flash()` runs
+     *     `okeeprom_eeset_rsakey()`, then `okcore_flashset_common()`, then
+     *     `hidprint()`.
+     *   - Nothing durable can be lost to the restart anyway. The emulator's
+     *     `okemu_eeprom_write()` is an immediate per-byte `pwrite`
+     *     (`emulator/src/ok_hal.cpp:589`) and flash is `MAP_SHARED` on
+     *     `flash.bin`, so both survive the SIGKILL a restart is.
+     *   - The kit's own `lib/pgp-rsa.js` `loadSlots()` writes both slots and
+     *     restarts IMMEDIATELY, with no settle at all, and `03-gui/08` drives
+     *     that six times under `--isolate` without ever losing a slot.
+     *
+     * What was really happening is above: the ack loop reused one mark and so
+     * returned after the FIRST slot's ack, while the App was still writing the
+     * second. This sleep was buying the App time to finish - which is why
+     * removing it failed deterministically and why no durability theory fit.
+     *
+     * KEPT, DELIBERATELY, AND NOT YET RE-MEASURED. With the loop fixed, this is
+     * expected to be unnecessary, but that has not been driven against the App
+     * yet - it needs the gadget, and the gadget cannot be up while a physical
+     * key is attached. Removing it on the strength of the reasoning above would
+     * be exactly the move this kit keeps warning about. Drop it, run the file,
+     * and delete this paragraph when it passes without it.
      */
     await device.sleep(6000, { signal });
 
