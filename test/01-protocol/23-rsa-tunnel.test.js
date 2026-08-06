@@ -294,6 +294,30 @@ describe('classic RSA over the WebAuthn tunnel', {
        * this file was written for. Flipping this to "run it and exclude the file
        * from full-tree runs" is a one-line change if that is preferred.
        */
+      /*
+       * EMULATED ONLY, AND THE ENV VAR MUST NOT BE ABLE TO OVERRIDE THAT.
+       *
+       * This is the one test in the file that is not hardware-capable, and it is
+       * gated at the TEST rather than on the suite because the other two ran
+       * against a physical key on 2026-08-06 and passed - gating the file would
+       * have thrown away real coverage.
+       *
+       * The reason is asymmetric in a way the env var alone does not capture.
+       * What makes this case safe to drive is `_FORTIFY_SOURCE`, which is the
+       * EMULATOR's: the one-byte overflow in `rsa_priv_flash()` aborts at the
+       * point of the write, which is how the defect was found at all. On a key
+       * there is no such build, so the same write lands silently and corrupts
+       * whatever follows `rsa_private_key`. Setting the variable on a hardware
+       * run would therefore aim a known out-of-bounds write at a real device
+       * with nothing to catch it - so the capability is checked FIRST and the
+       * variable can only ever arm this where the abort exists.
+       */
+      if (!device.capabilities.has('emulated')) {
+        skip('a 4096-bit key load is a known out-of-bounds WRITE ' +
+          '(FINDING-rsa4096-overflow.md); it is only safe to drive where ' +
+          '_FORTIFY_SOURCE aborts it, which is the emulator - on a key the same ' +
+          'write lands silently');
+      }
       if (process.env.OKT_EXPECT_RSA4096_FIX !== 'yes') {
         skip('loading a 4096-bit RSA key overflows rsa_private_key by one byte and aborts ' +
           'the firmware (FINDING-rsa4096-overflow.md); set OKT_EXPECT_RSA4096_FIX=yes once ' +
