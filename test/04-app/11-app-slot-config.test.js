@@ -153,7 +153,7 @@ describe('app slot config', {
   requires: ['client-access', 'display', 'nwjs'],
   timeoutMs: 240000,
 }, () => {
-  it('shows a connected device rather than its disconnected dialog', async ({ device, assert, log }) => {
+  it('shows a connected device rather than its disconnected dialog', async ({ device, assert, signal, log }) => {
     /*
      * ESTABLISH THE STATE THIS ASSERTS ABOUT. The App enumerates as it loads and
      * 10-session raised the gadget before it, so a connection should already
@@ -164,6 +164,14 @@ describe('app slot config', {
     const s = session.get();
     const page = await s.attach('app');
     try {
+      /*
+       * Each FILE gets its own device host, so between 10-session and this file
+       * the device was unplugged and replugged as far as the App is concerned.
+       * It recovers on onDeviceAdded, but not instantly - this test failed
+       * intermittently on exactly that before the wait was added.
+       */
+      await s.waitForDevice(page, device, { signal, log });
+
       const state = JSON.parse(await page.eval(`(() => {
         const open = (id) => {
           const el = document.getElementById(id);

@@ -453,6 +453,7 @@ on, and the first changes what that row costs:
 | the slot buttons are dead / the App is stuck | **NO to both - `getAttribute('open')` was the wrong instrument, and it cost three iterations.** `showModal()` sets the `open` attribute to the **EMPTY STRING**, so `!!el.getAttribute('open')` is false for a dialog that is wide open. The dialog had been opening all along. The App's own selenium test compares `getAttribute('open')` to `'true'` and is right only because **WebDriver normalises boolean attributes**; anything reading the raw DOM must use the `open` PROPERTY. A rule ported out of a selenium suite is not automatically true outside it |
 | the App binds its slot buttons when it shows them | **NO - there is a ~1.2s window in which they are visible and dead.** `initSlotConfigForm()` does the `addEventListener` and is reached only from `handleGetLabels()`, so the binding waits for the first OKGETLABELS reply while the panel is revealed from the unlocked state. Measured 1163ms, with a click issued from inside the page in the same frame the button was first laid out - and with a positive control (a click after binding opens the dialog). A real user reaches it by clicking a slot as soon as it appears. [FINDING-app-slot-button-dead-window.md](FINDING-app-slot-button-dead-window.md) |
 | the App sets NEXTKEY3 to Return without being asked (its own FIXME) | **NOT REPRODUCIBLE against a device.** Configuring a password through the UI and pressing types the password and nothing after it. Control in the same test: writing NEXTKEY3 by hand over the vendor interface makes the same press type `"\n"`, so the absence is real rather than a decoder that drops Returns. `04-app/11` asserts the measured behaviour and fails if a Return ever appears |
+| "Successfully set RSA Key" means the key is durable | **NO - a reboot immediately after the ack LOSES IT, and the layer is UNVERIFIED.** Auto-loading a PGP key writes slot 2 then slot 1; rebooting as soon as the second ack arrives leaves slot 2 readable and slot 1 answering "Error no RSA Private Key set in this slot". Isolated by changing one thing: with everything else fixed, adding a 6s settle before the restart makes it pass and removing it makes it fail, three times each. **Do not report this upstream yet** - the missing piece is the slot's TYPE byte, which lives in EEPROM, and the emulator writes the whole EEPROM during shutdown rather than on each write. So this may be an emulator persistence artifact rather than firmware. **How to tell:** run `04-app/12-app-keys` against a physical key, where EEPROM writes are immediate. `04-app/12` carries the settle and says why |
 | the App ships a harness, so there is something to adopt | **TRUE, but it does not RUN as shipped.** `test/` holds FOUR files, not the three tabled in §5: the fourth is `serial.js`, which requires `node-hid` - **not a dependency of that repo** - and `chalk`. Mocha's default glob is `test/*.js`, so `npm test` dies at that require; past it, `serial.js`'s 1 ms `setInterval` would stop mocha exiting, and `driver.js` launches nw.js at module scope rather than in a hook. Adopting means repairing three defects in somebody else's repo first |
 
 `OKFWUPDATE` is the exception to "check it": it is not to be verified
@@ -1230,6 +1231,18 @@ first and has never been pointed at the second.
       the test that hung. Section 2 caps its CLI commands at 12s for exactly this
       reason; the arithmetic is the same for anything waiting on a browser. Every
       wait in section 4 is under 20s.
+
+      **THE FIRMWARE TAB IS DELIBERATELY NOT DRIVEN, and this is the record of
+      that decision rather than an oversight.** The App has a Firmware tab
+      (`#firmware-panel`, `submitFirmwareFile()`), and it reaches **`OKFWUPDATE`**
+      - the one message in plane 1 that is gated `emulated` because on a physical
+      key it **locks the bootloader and permanently converts a developer key into
+      a production key**. Section 4 must not be the door that reaches it by
+      accident, so no file here opens that tab, fills that form, or clicks that
+      button. If a file ever does, it carries `requires: ['emulated']` like
+      `02-cli/14-cli-fido`, and it is driven only as far as its interlocks - the
+      same rule as everywhere else. The tab existing and being untouched is worth
+      one line so nobody later reads its absence as "nothing there to test".
 
       What is NOT known, and should be established before writing tests:
       - **`build/` is GITIGNORED** (`.gitignore:5`), so the question this row
