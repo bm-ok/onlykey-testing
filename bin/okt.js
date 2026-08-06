@@ -32,7 +32,7 @@ const { EXIT } = require('../lib/report');
 function usage() {
   console.log(`usage:
   okt run [target...]  [--hardware] [--test <substring>] [--isolate] [--reverse]
-                       [--timeout <ms>] [--quiet]
+                       [--controls] [--timeout <ms>] [--quiet]
   okt list [target...]
   okt caps
   okt fixture <state>
@@ -53,6 +53,12 @@ one run and catches the other order fault: a test that is BROKEN BY an earlier
 one passes alone and passes in file order, so --isolate cannot see it. Between
 the natural order, --reverse and --isolate, both directions are covered.
 
+--controls is the gate for NEGATIVE assertions. A test that says "the device did
+not reveal X" is worthless if the instrument was broken - the absence and the
+bug look identical - so a file declaring negative:true in its suite metadata
+must prove its instrument in every test, with assert.control(). This reports any
+test in such a file that registered none. See test/05-security/README.md.
+
 --hardware drives a physical key over /dev/hidraw instead of the emulator. The
 emulator's USB gadget is excluded by default because it is indistinguishable
 from a key by VID/PID; OKT_ALLOW_GADGET=yes targets it deliberately, and
@@ -66,7 +72,7 @@ function parse(argv) {
   const out = {
     command: argv[2] || 'help', targets: [], filter: null,
     timeoutMs: null, quiet: false, adapter: 'emulated',
-    reboot: true, delayMs: null, isolate: false, reverse: false,
+    reboot: true, delayMs: null, isolate: false, reverse: false, controls: false,
   };
   for (let i = 3; i < argv.length; i++) {
     const a = argv[i];
@@ -75,6 +81,7 @@ function parse(argv) {
     else if (a === '--quiet') out.quiet = true;
     else if (a === '--isolate') out.isolate = true;
     else if (a === '--reverse') out.reverse = true;
+    else if (a === '--controls') out.controls = true;
     else if (a === '--hardware') out.adapter = 'hardware';
     else if (a === '--no-reboot') out.reboot = false;
     else if (a === '--delay') out.delayMs = parseInt(argv[++i], 10);
@@ -130,6 +137,65 @@ function makeFilter(spec) {
  * Each pass gets its own run directory, so the failing one's log is already on
  * disk under its own name rather than interleaved with the rest.
  */
+/*
+ * The controls gate: every test in a declared-negative file must prove its
+ * instrument.
+ *
+ * WHAT IT CAN CHECK, and the limit is the honest part. A runner cannot look at
+ * `assert.equal(count, 0)` and know it is a claim about an absence, so this
+ * does not find negative assertions - it checks that files which DECLARE they
+ * make them (`negative: true` in the suite metadata) have a positive control in
+ * every test. `assert.absent()` already refuses to pass without one; this
+ * catches the test that asserted an absence some other way and never proved
+ * anything worked.
+ *
+ * One ordinary run, not a run per test - the ledger is collected as the tests
+ * execute, so this costs what a normal run costs.
+ */
+async function runControls(args) {
+  const { run } = require('../lib/runner');
+  const { EXIT: CODES } = require('../lib/report');
+
+  const ledger = [];
+  const { code } = await run({
+    targets: args.targets,
+    adapter: args.adapter,
+    quiet: true,
+    timeoutMs: args.timeoutMs || undefined,
+    testFilter: makeFilter(args.filter),
+    controlLedger: ledger,
+  });
+
+  const declared = ledger.filter((e) => e.negative);
+  if (!declared.length) {
+    console.log('--controls: no file in this target declares `negative: true`, ' +
+      'so there is nothing for this gate to check.');
+    console.log('A section that asserts absences should say so in its suite ' +
+      'metadata; see test/05-security/README.md.');
+    return code;
+  }
+
+  const naked = declared.filter((e) => e.status === 'passed' && !e.controls.length);
+  console.log(`--controls: ${declared.length} test(s) in declared-negative files\n`);
+  for (const e of declared) {
+    const mark = e.controls.length ? 'ok  ' : 'NONE';
+    console.log(`  ${mark}  ${e.file}  ${e.test}`);
+    for (const c of e.controls) console.log(`          control: ${c}`);
+    for (const a of e.absents) console.log(`          absence: ${a}`);
+  }
+
+  if (naked.length) {
+    console.log(`\n--controls: ${naked.length} test(s) proved no instrument:`);
+    for (const e of naked) console.log(`  ${e.file}  ${e.test}`);
+    console.log('\nAn absence asserted by a test that proved nothing works is ' +
+      'indistinguishable from a broken instrument. Add assert.control().');
+    return CODES.TEST_FAILURE;
+  }
+
+  console.log('\n--controls: every declared-negative test proved its instrument');
+  return code;
+}
+
 async function runIsolated(args) {
   const { run, list } = require('../lib/runner');
   const { EXIT: CODES } = require('../lib/report');
@@ -196,6 +262,7 @@ async function main() {
   switch (args.command) {
     case 'run': {
       const { run } = require('../lib/runner');
+      if (args.controls) { process.exit(await runControls(args)); }
       if (args.isolate) { process.exit(await runIsolated(args)); }
 
       const { code } = await run({

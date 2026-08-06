@@ -70,6 +70,14 @@ instruments:
 |---|---|---|
 | DEPENDS on an earlier test | run alone | `--isolate` |
 | BROKEN BY an earlier test | something runs before it | `--reverse` |
+| asserts an ABSENCE having proved nothing | never - it passes | `--controls` |
+
+The third is section 5's gate and is a different kind of fault: the other two
+make a test fail somewhere, while a broken instrument makes it PASS. A file that
+declares `negative: true` must call `assert.control()` in every test, and
+`assert.absent()` refuses to pass until one has fired. See
+[test/05-security/README.md](test/05-security/README.md) for the six absences
+that were really this kit's own instrument.
 
 `--reverse` runs a file's tests back to front in one ordinary session, so it
 costs one run rather than a boot per test:

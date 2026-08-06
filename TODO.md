@@ -1369,7 +1369,13 @@ first and has never been pointed at the second.
         the device-up-but-LOCKED case**, which is the one worth checking before
         assuming the rule can be dropped.
 
-## 6. Section 5 - security. PLANNED, NOT BUILT, AFTER THE SWEEP
+## 6. Section 5 - security. SCAFFOLDED, AND BOTH PREREQUISITES ARE NOW BUILT
+
+**As of 2026-08-06 this heading's old text - "PLANNED, NOT BUILT, AFTER THE
+SWEEP" - is no longer true of the blocking half.** Both harness prerequisites
+exist, `test/05-security/` exists with its own README carrying the admission
+test and the rules, and `okt run 05-security --controls` is green. What is left
+is writing tests, which is what the section was waiting for permission to do.
 
 Recorded now while the reasoning is fresh; [PLAN.md](PLAN.md)'s stage 7 carries
 the argument for every line here. **Nothing in this section is to be written
@@ -1424,8 +1430,24 @@ the surface to repay looking, not a claim that it is unsound.
       is needed is a runner mode where a crash is captured with its evidence -
       the signal, the addon's `[okemu] FATAL:` line and backtrace, and the request
       that caused it - and the next case continues against a fresh host.
-- [ ] **NO NEGATIVE ASSERTION COUNTS UNLESS A POSITIVE CONTROL IN THE SAME TEST
-      FIRES. A gate, like `--isolate` and `--reverse`.** A section built on "the
+- [x] **NO NEGATIVE ASSERTION COUNTS UNLESS A POSITIVE CONTROL IN THE SAME TEST
+      FIRES. A gate, like `--isolate` and `--reverse`.** **BUILT 2026-08-06.**
+      `assert.control(what, cond)` records that an instrument was proven;
+      `assert.absent(cond, msg)` REFUSES to pass until one has fired in the same
+      test. `okt run <target> --controls` is the gate: a file declaring
+      `negative: true` fails if any of its tests registered no control.
+
+      **What it cannot do, stated so nobody over-trusts it:** a runner cannot
+      look at `assert.equal(count, 0)` and know it is a claim about absence. So
+      this does not FIND negative assertions - it gives them a form and checks
+      that declared-negative files use it. The discipline stays the author's;
+      the gate makes forgetting it visible, which is all a gate can do.
+
+      Proven both ways: green on `05-security/00-controls`, and exit 1 on a
+      deliberately naked test that asserts an absence with a plain assertion.
+
+- [x] ~~**NO NEGATIVE ASSERTION COUNTS UNLESS A POSITIVE CONTROL IN THE SAME TEST
+      FIRES. A gate, like `--isolate` and `--reverse`.**~~ A section built on "the
       device did not reveal X" is a section where a broken instrument reads as a
       pass, and this kit produced **three** of those in one day:
 
