@@ -213,6 +213,9 @@ describe('app advanced', {
          * SILENT. `submitYubiAuthForm()` runs the value through
          * `hexToModhex(publicId, true)`, and `reverse = true` means the INPUT
          * alphabet is modhex - "cbdefghijklnrtuv" - which it converts to hex.
+         * The FIELD SAYS SO: its label reads "Public Identity (6 bytes modhex)",
+         * so this is a labelled format rather than a hidden one, and the defect
+         * is narrower than "undiscoverable". Getting it wrong is what is silent.
          * A hex digit is not in that alphabet, so the function throws, the throw
          * escapes the click handler into event dispatch, and nothing catches it:
          * no message reaches the device, `yubiError` stays empty and the form
@@ -266,14 +269,18 @@ describe('app advanced', {
        * A DEFECT, PINNED AS IT SHIPS, WITH ITS POSITIVE CONTROL IN THE SAME TEST.
        *
        * `submitYubiAuthForm()` converts the Public ID with `hexToModhex(v, true)`,
-       * whose input alphabet is MODHEX. Hand it hex - which is what the adjacent
-       * Private ID and Secret Key fields take, and what most tooling prints -
-       * and it throws "Invalid character sent for hexToModhex conversion" from
+       * whose input alphabet is MODHEX, as its own label states ("Public
+       * Identity (6 bytes modhex)"). Hand it hex instead - which is what the two
+       * fields directly BELOW it take, both labelled "hex" - and it throws "Invalid character sent for hexToModhex conversion" from
        * inside the click handler. Nothing catches it. The App has `// TODO:
        * validation` at that spot and `// TODO: check for success` at the
        * callback, so the user gets no error, no acknowledgement and no clue: the
        * button simply does nothing, exactly like the slot-button dead window in
-       * FINDING-app-slot-button-dead-window.md.
+       * FINDING-app-slot-button-dead-window.md. The form is also left UNRESET,
+       * which is the only visible tell: a successful submit calls
+       * `ui.yubiAuthForm.reset()`, so a still-populated field means the write
+       * never happened. Captured while writing this - the field still held the
+       * rejected value with the error box empty.
        *
        * THE CONTROL IS WHY THIS IS A FINDING RATHER THAN A TIMEOUT. The test
        * above submits a VALID modhex id and requires the device to acknowledge

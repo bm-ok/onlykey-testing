@@ -786,8 +786,13 @@ in-process bus like section 1.
   nw.js by `03-gui/14-gui-encrypt-decrypt`. Everything under pgp-pqc is proven
   headless, so a failure there means the page.
 - **Section 4's remaining tab is SETUP, and only that one.** Slots, Keys,
-  Backup, **Preferences, Advanced and Tools** are all driven as of 2026-08-06 -
-  27 tests. The **restore** half of Backup is measured but unsettled (see TODO's
+  Backup, **Preferences and Advanced** are driven as of 2026-08-06 - 25 tests.
+  **Tools is not, by decision**: it is a launcher, eight external anchors that
+  `nw.Shell.openExternal` hands to the user's real browser, with no input,
+  select or form on the panel. A link that opens an external page has no
+  behaviour to assert, so the file that pinned its hrefs was removed rather than
+  maintained. The one thing worth keeping from it is written up in
+  [FINDING-app-tools-origin.md](FINDING-app-tools-origin.md). The **restore** half of Backup is measured but unsettled (see TODO's
   premises table). The **Firmware** tab is deliberately excluded - it reaches
   `OKFWUPDATE` - and Preferences' full-wipe button is excluded for the same
   class of reason, with its presence asserted so its absence would be noticed.
