@@ -1,4 +1,51 @@
 /*
+ * PARKED - DO NOT ADD TO test/03-gui/ UNTIL THE DECRYPT STEP IS FIXED.
+ *
+ * Not because of where it lives: the require depth and the `13-` number are
+ * already correct for test/03-gui/, and moving it there is all it takes to make
+ * the runner load it. That was tried and it works. It is parked because of what
+ * happens next.
+ *
+ * WHERE IT GETS TO, run as `03-gui/10-session 03-gui/13-pgp-pqc 03-gui/19-stop`
+ * (it needs 10-session; alone it fails with "no GUI session is running"):
+ *
+ *   10 pass - unlock, open page, generate in the browser, load the displayed
+ *             hex with `onlykey-cli setpqc`, encrypt host-side
+ *    1 fail - "decrypts it through the device"
+ *
+ * THE FAILURE, and it is not yet diagnosed:
+ *
+ *   Page status: "ERROR: Error decrypting message: Key Data Integrity failed"
+ *   Page console: USER_ACTION_PENDING, USER_ACTION_PENDING, CTAP1_SUCCESS
+ *   Harness:      3x /Received Message/ still pending after 37s
+ *
+ * A composite decryption needs TWO device operations - X25519 then ML-KEM-768 -
+ * each with its own three-button confirmation. Only one completed, and the
+ * device then stopped announcing received packets, so the second half never
+ * produced a key share and the AES key unwrap failed. Whether that is the test
+ * failing to drive the second confirmation, or the page failing to raise it, is
+ * exactly the open question.
+ *
+ * WHAT IT IS NOT: evidence that composite decryption is broken. The identical
+ * operation - one openpgp.decrypt() driving both halves through the same
+ * WebAuthn bridge and the same hardware hooks - passes at the library tier in
+ * 02-cli/06-composite-ops ("decrypts a real PGP message, which asks the device
+ * twice"). The page was served the current bundle, not a stale one: index.js
+ * serves ./docs, and docs/ holds one bundle carrying the conformant codepoints.
+ * So this is a PAGE-TIER question, and the page tier has never had coverage -
+ * which is the whole reason this file exists.
+ *
+ * It hangs rather than fails fast (the run ends on the inactivity watchdog,
+ * exit 3, ~146s), so dropping it into the section would cost every future run
+ * that time and end it on a watchdog. Hence parked rather than merely red.
+ *
+ * NEXT STEP for whoever picks this up: instrument which of the two halves is
+ * missing before touching anything. lib/pqc.js's confirmFromConsole() answers
+ * every challenge it observes, so start by checking whether the second
+ * challenge is ever raised on the console at all.
+ *
+ * ---------------------------------------------------------------------------
+ *
  * Section 3, browser tier: the pgp-pqc page - TC-11 the way a person does it.
  *
  * This page is unusual among the app's screens in that it cannot finish its own
