@@ -32,7 +32,7 @@ const { EXIT } = require('../lib/report');
 function usage() {
   console.log(`usage:
   okt run [target...]  [--hardware] [--test <substring>] [--isolate] [--reverse]
-                       [--controls] [--timeout <ms>] [--quiet]
+                       [--keep-going] [--controls] [--timeout <ms>] [--quiet]
   okt list [target...]
   okt caps
   okt fixture <state>
@@ -52,6 +52,12 @@ cannot stand alone. It is the gate for new files, and costs a boot per test.
 one run and catches the other order fault: a test that is BROKEN BY an earlier
 one passes alone and passes in file order, so --isolate cannot see it. Between
 the natural order, --reverse and --isolate, both directions are covered.
+
+--keep-going runs past a file whose test FAILED, to the next file, instead of
+ending the run there - so a known failure cannot hide the files after it. The
+run still stops on anything that means the instrument is broken (the device
+host dying, a watchdog, a timeout, a fixture that will not build). Use it for
+baselines: every file is counted, and the summary names the failing files.
 
 --controls is the gate for NEGATIVE assertions. A test that says "the device did
 not reveal X" is worthless if the instrument was broken - the absence and the
@@ -73,6 +79,7 @@ function parse(argv) {
     command: argv[2] || 'help', targets: [], filter: null,
     timeoutMs: null, quiet: false, adapter: 'emulated',
     reboot: true, delayMs: null, isolate: false, reverse: false, controls: false,
+    keepGoing: false,
   };
   for (let i = 3; i < argv.length; i++) {
     const a = argv[i];
@@ -81,6 +88,7 @@ function parse(argv) {
     else if (a === '--quiet') out.quiet = true;
     else if (a === '--isolate') out.isolate = true;
     else if (a === '--reverse') out.reverse = true;
+    else if (a === '--keep-going') out.keepGoing = true;
     else if (a === '--controls') out.controls = true;
     else if (a === '--hardware') out.adapter = 'hardware';
     else if (a === '--no-reboot') out.reboot = false;
@@ -272,6 +280,7 @@ async function main() {
         timeoutMs: args.timeoutMs || undefined,
         testFilter: makeFilter(args.filter),
         testOrder: args.reverse ? 'reverse' : 'natural',
+        keepGoing: args.keepGoing,
       });
       process.exit(code);
       break;
