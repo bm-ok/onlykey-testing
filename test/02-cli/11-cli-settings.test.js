@@ -88,9 +88,14 @@ describe('onlykey-cli, the settings endpoints', {
     return { result, said: okmsg.text(reply).trim() };
   }
 
-  /** Both readers of one message have to agree. */
+  /**
+   * Both readers of one message have to agree. The message names BOTH sides:
+   * this failed on release 3.1.0 (2026-09-28) with no way to tell whether the
+   * CLI read the wrong reply, printed nothing, or added to it (audit #9).
+   */
   const relayed = (assert, result, said) => assert.equal(result.stdout.trim(), said,
-    'the CLI printed something other than what the device answered');
+    `the CLI printed something other than what the device answered: CLI `
+    + `${JSON.stringify(result.stdout.trim())} (exit ${result.code}), device ${JSON.stringify(said)}`);
 
   /**
    * Unlocked, and definitely NOT in config mode.
