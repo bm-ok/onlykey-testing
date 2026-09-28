@@ -40,7 +40,17 @@ const webenv = require('../../lib/webenv');
  * CTAP2_ERR_EXTENSION_NOT_SUPPORTED - which reads like the request being
  * malformed rather than a setting being off.
  */
-const FIELD_DERIVED_KEY_MODE = 21;
+/*
+ * Field 30: the WEB AND AGENT derivation mode (okcore.cpp case 30) - the one
+ * that governs a derive arriving over the FIDO2 tunnel. It was 21 here - the
+ * STORED-derived challenge mode - while the comment below already said 30.
+ * Field 21 refuses 2 (no press) unless the build defines OK_ALLOW_NO_PRESS, so
+ * every run read "unsupported user input mode" as "this build cannot derive
+ * without a touch" and skipped - leaving the key in CONFIG MODE, where
+ * OKCONNECT is not on the allow-list, so every derive after it got no data
+ * (audit #7, 2026-09-28). Field 30 has no such guard: 2 is always settable.
+ */
+const FIELD_DERIVED_KEY_MODE = 30;
 /*
  * USER_INPUT_NONE, not a bit.
  *
@@ -123,6 +133,10 @@ describe('derived keys, through the web app\'s library', {
       { since, match: /Successfully set|Error/, timeoutMs: 5000, signal });
     const text = okmsg.text(reply);
     if (/unsupported user input mode/.test(text)) {
+      /* Out of config mode FIRST: skip() ends this test, and a key left in
+       * config mode refuses OKCONNECT - which is every test after this one. */
+      await device.restart({ signal });
+      await device.unlock(PINS.primary, { signal });
       skip('this build has OK_ALLOW_NO_PRESS off, so user-input mode 2 (no press) is ' +
         'refused by design - onlykey.h ships it commented out and a stale 2 in EEPROM ' +
         'fails closed to challenge code. There is no no-touch derivation to test here');

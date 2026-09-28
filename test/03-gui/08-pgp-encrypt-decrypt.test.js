@@ -90,12 +90,24 @@ describe('the web app\'s encrypt and decrypt pages, at the library tier', {
     return { api, pgp, openpgp: webenv.openpgp() };
   }
 
-  /** Watch the status line the pages put on their button - see doPinTimer(). */
+  /**
+   * Watch the status line the pages put on their button - see doPinTimer().
+   *
+   * Two wordings. Web app 4.0.0 says "Confirm on your OnlyKey (Ns) - tap any
+   * button, or press 6-2-5 if it asks for a challenge code": in the firmware's
+   * default press mode ANY button authorises (onlykey-pgp.js explains why the
+   * old line overstated it). Older copies said "You have N seconds to enter
+   * challenge code 6,2,5 on OnlyKey". The digits are in both, and they are
+   * still the oracle below - so both are read, and a copy that shows no digits
+   * at all still fails by name.
+   */
   function watchChallenge(pgp) {
     const seen = [];
     pgp.on('status', (message) => {
-      const m = /challenge code ([0-9,]+) on OnlyKey/.exec(String(message));
-      if (m) seen.push(m[1].split(',').map(Number));
+      const text = String(message);
+      const m = /challenge code ([0-9,]+) on OnlyKey/.exec(text)
+        || /press ([0-9]+(?:-[0-9]+)+) if it asks for a challenge code/.exec(text);
+      if (m) seen.push(m[1].split(/[,-]/).map(Number));
     });
     return seen;
   }
