@@ -269,7 +269,7 @@ describe('onlykey-cli, the settings endpoints', {
        * The one endpoint here whose ACCEPT path is driven as well as its
        * refusal, and it earns the cost - entering config mode is a long press, a
        * relock and a second unlock - because this bit is load-bearing elsewhere:
-       * 03-gui/02-derive needs it set before the web app's derive call works at
+       * 03-gui/02-derive (retired 2026-09-29; the web app derives through node-onlykey-lib now) needs it set before the web app's derive call works at
        * all, and sets it over the kit's own vendor interface rather than through
        * this command. Driving the CLI's version here is what says the two agree.
        *

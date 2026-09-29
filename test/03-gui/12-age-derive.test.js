@@ -58,7 +58,8 @@ describe('the age-derive page', {
   timeoutMs: 240000,
 }, () => {
   let page = null;
-  let third = null;
+  /* node-onlykey-lib over the kit's own transport, for the cross-check below. */
+  let kitLib = null;
   let ageFileB64 = null;
 
   const val = (id) => page.eval(`document.querySelector(${JSON.stringify(`#${id}`)}).value`);
@@ -96,10 +97,13 @@ describe('the age-derive page', {
       const model = await device.unlock(PINS.primary, { signal });
       assert.match(model, /^UNLOCKED/, 'the device is not unlocked');
 
-      /* The kit's own way to the same device, for the cross-checks below. */
-      const imports = webenv.create(device, { signal, rpId: RP_ID });
-      const api = webenv.load(imports, 'onlykey-api.js');
-      third = webenv.load(imports, 'onlykey-3rd-party.js', api)();
+      /*
+       * The kit's own way to the same device, for the cross-check below:
+       * node-onlykey-lib over the in-process bus. The page runs the same
+       * library since the port, but through Chromium's WebAuthn - so the two
+       * agreeing is still two transports agreeing, which is the point.
+       */
+      kitLib = (await webenv.browserLib(device, { signal, rpId: RP_ID })).okcrypto;
     });
 
   it('opens the page', async ({ assert, log }) => {
@@ -209,26 +213,13 @@ describe('the age-derive page', {
      * is somebody's data.
      */
     const file = Buffer.from(ageFileB64, 'base64');
-    const m = file.toString('latin1').match(/^-> mlkem768x25519 (\S+)$/m);
-    const ciphertext = Buffer.from(m[1], 'base64');
 
-    /* The device's two halves, asked for by this kit rather than by the page. */
-    const { pkX, seed } = await new Promise((resolve, reject) => {
-      third.derive_xwing_recipient(LABEL, false, (err, x, s) => (
-        err ? reject(new Error(String(err))) : resolve({ pkX: x, seed: s })
-      ));
-    });
-    const ssX = await new Promise((resolve, reject) => {
-      third.derive_xwing_decap(LABEL, Buffer.from(ours.ctXOf(ciphertext)), false,
-        (err, s) => (err ? reject(new Error(String(err))) : resolve(s)));
-    });
-
-    const shared = ours.splitDecapsulate(
-      Buffer.from(ssX), ciphertext, Buffer.from(pkX), Buffer.from(seed)
-    );
-
-    const ageFile = webenv.loadPlain('age_file.js');
-    const opened = await ageFile.decryptAgeFile(file, async () => shared);
+    /*
+     * The device decapsulates for the label; the library opens the file. This
+     * used to ask the web app's former library for two key halves and combine
+     * them host-side - a shape the firmware dropped for device custody.
+     */
+    const opened = await kitLib.deviceAge.decrypt(file, LABEL);
 
     assert.equal(Buffer.from(opened).toString('utf8'), PLAINTEXT,
       'the kit could not open the file the browser sealed');

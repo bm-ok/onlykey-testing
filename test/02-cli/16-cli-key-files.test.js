@@ -95,11 +95,11 @@ describe('onlykey-cli, loading keys from PGP files', {
    * same call it makes, keeps the private key, and packs the blob with the same
    * `packBlob()`. Doing it this way rather than reimplementing the offsets is
    * what keeps this test about the FILE PARSE rather than about the layout,
-   * which `03-gui/05-composite-blob` already owns.
+   * which `03-gui/05-composite-blob` (retired 2026-09-29; now node-onlykey-lib's composite tests + 02-cli/05) already owns.
    */
   async function compositeKeyFile(name) {
     const openpgp = webenv.openpgp();
-    const cp = webenv.loadPlain('composite_pgp.js');
+    const cp = require('node-onlykey-lib/crypto').composite;
 
     openpgp.clearHardwareHooks();
     const { privateKey, publicKey } = await openpgp.generateKey({

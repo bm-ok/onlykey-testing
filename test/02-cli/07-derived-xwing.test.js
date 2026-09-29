@@ -8,7 +8,7 @@
  * key the web app's age-derive page produces on any origin, which is what makes
  * CLI and browser interoperable rather than merely similar.
  *
- * `03-gui/03-xwing-derive` already proves this maths against the device over
+ * `03-gui/03-xwing-derive` (retired 2026-09-29; now 02-cli/20-xwing-tunnel-lib) already proves this maths against the device over
  * the CTAP2 vendor bridge. This is the same firmware arithmetic reached the
  * other way: raw HID, `OKGETPUBKEY`/`OKDECRYPT` with
  * `RESERVED_KEY_WEB_DERIVATION`. Two transports into one derivation, which is
@@ -34,7 +34,7 @@
  *     with the device doing nothing at all.
  *
  * No `derivedkeymode` setup either, and that is a real difference from
- * `03-gui/02-derive` rather than an omission: bit 3 is checked in
+ * `03-gui/02-derive` (retired 2026-09-29; the web app derives through node-onlykey-lib now) rather than an omission: bit 3 is checked in
  * `fido2/ok_extension.cpp`, on the tunnelled path only. The raw-HID branch in
  * `okcrypto.cpp` has no such gate.
  */

@@ -512,7 +512,7 @@ describe('onlykey-gpg, initialising a GnuPG identity', {
        * The device must also be untouched: this has to fail BEFORE anything is
        * asked of it, or a failed retry would leave a challenge primed and the
        * next operation would consume it. That is the same ordering hazard
-       * 06-composite-ops records.
+       * 06-composite-ops (retired 2026-09-29; now 02-cli/19-composite-tunnel-lib) records.
        */
       const primed = device.log.count(PRIMED);
       const before = device.log.text.length;

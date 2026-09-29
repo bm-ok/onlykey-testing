@@ -3,7 +3,7 @@
  * python-onlykey 1.3.0), `signpqc`,
  * `decryptpqc`.
  *
- * 05-composite-load and 06-composite-ops already prove the DEVICE does these
+ * 05-composite-load and 06-composite-ops (retired 2026-09-29; now 02-cli/19-composite-tunnel-lib) already prove the DEVICE does these
  * things - the first through a hand-written python snippet, the second through
  * the web app's library. Neither goes through `onlykey-cli`, and that turned
  * out to matter: until this file's fixes there was no CLI route to a composite
@@ -56,7 +56,7 @@ const HALF_ECC = 0;
 
 /*
  * RSA3, and the slot choice is load-bearing. 05-composite-load and
- * 06-composite-ops both keep a composite key in RSA1 and 02-cli/12 uses RSA4;
+ * 06-composite-ops (retired 2026-09-29; now 02-cli/19-composite-tunnel-lib) both keep a composite key in RSA1 and 02-cli/12 uses RSA4;
  * a spec that overwrites a fixture another spec depends on produces failures
  * that read exactly like a firmware regression, which has now happened twice in
  * this project's history (TEST-PLAN's RSA1 and RSA4 collisions). A fixture
@@ -80,7 +80,7 @@ describe('onlykey-cli composite PQC operations', {
   it('generates the key the rest of the file uses', async ({ assert, log }) => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'okt-cliops-'));
 
-    const composite = webenv.loadPlain('composite_pgp.js');
+    const composite = require('node-onlykey-lib/crypto').composite;
     const generated = await composite.generateCompositeKey(webenv.openpgp(), {
       userId: { name: 'Kit', email: 'kit@example.com' },
     });
