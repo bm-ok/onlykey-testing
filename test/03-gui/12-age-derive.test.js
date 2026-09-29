@@ -42,7 +42,14 @@ const RP_ID = 'localhost';
 const PAGE = `http://${RP_ID}:3000/app/age-encrypt`;
 const PAGE_DECRYPT = `http://${RP_ID}:3000/app/age-decrypt`;
 
-const FIELD_DERIVED_KEY_MODE = 21;
+/*
+ * Field 30, the web-agent derive mode - the one okcrypto's deviceAge path reads,
+ * and the one 02-cli/20-xwing-tunnel-lib sets for the same derivation. This was
+ * 21 (derived_key_challenge_mode, the legacy bitfield), which refuses the enum
+ * value 2 as "unsupported user input mode": the file then skipped its first
+ * test and ran the rest against a device it had left in config mode.
+ */
+const FIELD_DERIVED_KEY_MODE = 30;
 /*
  * USER_INPUT_NONE, not a bit.
  *
@@ -91,6 +98,17 @@ describe('the age-derive page', {
       });
       const reply = await device.waitHid(IFACE.VENDOR,
         { since, match: /Successfully set|Error/, timeoutMs: 5000, signal });
+      /*
+       * LEAVE CONFIG MODE BEFORE ANY VERDICT. In config mode the FIDO interface
+       * answers nothing (FINDING-fido-silent-in-config-mode: the firmware prints
+       * "ERROR NOT SUPPORTED IN CONFIG MODE" for CTAPHID_INIT and sends no
+       * reply), so a skip or a failed assert thrown from here used to leave the
+       * device there, and every page after it died inside Chromium as
+       * "fido_hid_device.cc:555 FIDO HID device timeout" - a transport fault
+       * in the log for what was a state this file forgot to undo.
+       */
+      await device.restart({ signal });
+      const model = await device.unlock(PINS.primary, { signal });
       if (/unsupported user input mode/.test(okmsg.text(reply))) {
         skip('this build has OK_ALLOW_NO_PRESS off, so user-input mode 2 (no press) ' +
           'is refused by design - onlykey.h ships it commented out and a stale 2 in ' +
@@ -98,9 +116,6 @@ describe('the age-derive page', {
       }
       assert.ok(!/Error/.test(okmsg.text(reply)),
         `setting the derived-key mode failed: ${okmsg.text(reply)}`);
-
-      await device.restart({ signal });
-      const model = await device.unlock(PINS.primary, { signal });
       assert.match(model, /^UNLOCKED/, 'the device is not unlocked');
 
       /*
