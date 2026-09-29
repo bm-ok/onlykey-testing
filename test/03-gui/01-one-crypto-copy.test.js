@@ -41,15 +41,15 @@ describe('the web app carries no crypto library of its own', {
   it('vendors none in its source', async ({ assert, log }) => {
     const found = vendoredCopies(webenv.WEBAPP_SRC);
     log(`scanned ${webenv.WEBAPP_SRC}: ${found.length ? found.join(', ') : 'none'}`);
-    assert.deepEqual(found, [],
-      'the web app vendors its own copy - node-onlykey-lib\'s is the one copy (src/vendor/VENDORED.md)');
+    assert.equal(found.length, 0,
+      `the web app vendors its own copy (${found.join(', ')}) - node-onlykey-lib's is the one copy (src/vendor/VENDORED.md)`);
   });
 
   it('declares none as a dependency, and does declare the library', async ({ assert }) => {
     const pkg = JSON.parse(fs.readFileSync(path.join(webenv.WEBAPP_SRC, '..', 'package.json'), 'utf8'));
     const deps = { ...pkg.dependencies, ...pkg.devDependencies };
     const own = Object.keys(deps).filter((d) => /^@noble\/|^(tweetnacl|openpgp|kbpgp|node-forge)$/.test(d));
-    assert.deepEqual(own, [], `the web app depends on its own crypto: ${own.join(', ')}`);
+    assert.equal(own.length, 0, `the web app depends on its own crypto: ${own.join(', ')}`);
     assert.match(String(deps['node-onlykey-lib'] || ''), /node-onlykey-lib#[0-9a-f]{40}$/,
       'the web app does not pin node-onlykey-lib by commit hash');
   });
