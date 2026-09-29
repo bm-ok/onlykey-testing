@@ -76,8 +76,8 @@ describe('composite operations, through the web app\'s library', {
     blob = Buffer.from(generated.blob);
     armored = generated.armoredPublicKey;
 
-    const { ed25519 } = require('@noble/curves/ed25519.js');
-    const { x25519 } = require('@noble/curves/ed25519.js');
+    const { ed25519 } = require('node-onlykey-lib/vendor/@noble/curves/ed25519.js');
+    const { x25519 } = require('node-onlykey-lib/vendor/@noble/curves/ed25519.js');
     ed25519Pub = Buffer.from(ed25519.getPublicKey(blob.subarray(0, 32)));
     x25519Sk = Buffer.from(blob.subarray(64, 96));
     log(`x25519 public ${Buffer.from(x25519.getPublicKey(x25519Sk)).toString('hex').slice(0, 16)}…`);
@@ -135,7 +135,7 @@ describe('composite operations, through the web app\'s library', {
       log(`library got ${bytes.length} bytes`);
       assert.equal(bytes.length, 64, 'an Ed25519 signature is 64 bytes');
 
-      const { ed25519 } = require('@noble/curves/ed25519.js');
+      const { ed25519 } = require('node-onlykey-lib/vendor/@noble/curves/ed25519.js');
       assert.ok(ed25519.verify(bytes, digest, ed25519Pub),
         'the signature does not verify against the loaded key');
     });
@@ -148,7 +148,7 @@ describe('composite operations, through the web app\'s library', {
      * reason as the signature: its answer can be checked in one line, since
      * X25519(sk_device, ephemeral_pub) must equal X25519(sk_ephemeral, pub_device).
      */
-    const { x25519 } = require('@noble/curves/ed25519.js');
+    const { x25519 } = require('node-onlykey-lib/vendor/@noble/curves/ed25519.js');
 
     const ephemeralSk = x25519.utils.randomSecretKey();
     const ephemeralPub = x25519.getPublicKey(ephemeralSk);
@@ -194,7 +194,7 @@ describe('composite operations, through the web app\'s library', {
        * Using the wrong one derives a different keypair, and the mismatch is
        * indistinguishable from a lost chunk.
        */
-      const { ml_kem768 } = require('@noble/post-quantum/ml-kem.js');
+      const { ml_kem768 } = require('node-onlykey-lib/vendor/@noble/post-quantum/ml-kem.js');
 
       const { mlkemSeed } = composite.unpackBlob(blob);
       assert.equal(mlkemSeed.length, 64, 'the blob does not carry a 64-byte ML-KEM seed');

@@ -19,13 +19,9 @@
     "node": ">=20"
   },
   "optionalDependencies": {
-    "@noble/ciphers": "^2.2.0",
-    "@noble/curves": "^2.2.0",
-    "@noble/hashes": "^2.2.0",
-    "@noble/post-quantum": "^0.6.1",
     "node-hid": "^3.4.0"
   },
   "dependencies": {
-    "node-onlykey-lib": "github:bmatusiak/node-onlykey-lib#93d2b2d8310fc52c5db0c82a4a8c892e4f9939a1"
+    "node-onlykey-lib": "github:bmatusiak/node-onlykey-lib#deca473354c61f6a2bd5ece5ea83a8d60661857d"
   }
 }

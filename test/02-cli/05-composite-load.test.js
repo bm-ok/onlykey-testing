@@ -64,7 +64,7 @@ describe('loading a composite PGP-PQC key', {
      * the signature check below meaningful: it can only pass if the device
      * stored, and later used, exactly these bytes.
      */
-    const { ed25519 } = require('@noble/curves/ed25519.js');
+    const { ed25519 } = require('node-onlykey-lib/vendor/@noble/curves/ed25519.js');
     ed25519Pub = Buffer.from(ed25519.getPublicKey(blob.subarray(0, 32)));
     log(`blob ready, ed25519 public ${ed25519Pub.toString('hex').slice(0, 16)}…`);
   });
@@ -177,7 +177,7 @@ describe('loading a composite PGP-PQC key', {
      * means the firmware read the layout the way the web app wrote it, the CLI
      * chunked it correctly across three 57-byte messages, and the slot kept it.
      */
-    const { ed25519 } = require('@noble/curves/ed25519.js');
+    const { ed25519 } = require('node-onlykey-lib/vendor/@noble/curves/ed25519.js');
     const ok = ed25519.verify(Buffer.from(hex, 'hex'), digest, ed25519Pub);
 
     assert.ok(ok, 'the signature does not verify against the key that was loaded');
@@ -210,7 +210,7 @@ describe('loading a composite PGP-PQC key', {
 
     const signed = (result.stdout.match(/^SIGNED:([0-9a-f]+)$/m) || [])[1];
     if (signed) {
-      const { ed25519 } = require('@noble/curves/ed25519.js');
+      const { ed25519 } = require('node-onlykey-lib/vendor/@noble/curves/ed25519.js');
       assert.ok(!ed25519.verify(Buffer.from(signed, 'hex'), digest, ed25519Pub),
         'an empty slot produced a signature valid under the loaded key');
     }

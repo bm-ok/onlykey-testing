@@ -412,7 +412,7 @@ describe('stored keys, across all six key types', {
       assert.bytes(pub, atKeygen,
         'the stored key is not the one the keygen returned');
 
-      const { ml_kem768 } = require('@noble/post-quantum/ml-kem.js');
+      const { ml_kem768 } = require('node-onlykey-lib/vendor/@noble/post-quantum/ml-kem.js');
       const { cipherText, sharedSecret } = ml_kem768.encapsulate(new Uint8Array(pub));
       log(`ciphertext ${cipherText.length} bytes`);
 

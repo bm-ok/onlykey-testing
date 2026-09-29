@@ -51,18 +51,23 @@ describe('the web app\'s X-Wing maths', {
      * survives: the vendored packages are ESM, and @noble/post-quantum imports
      * @noble/hashes by bare specifier internally, which Node's ESM resolver has
      * no alias for. So hashes and curves load from the app's own vendor tree
-     * and post-quantum falls back to the copy installed here.
+     * and post-quantum falls back to node-onlykey-lib's vendored copy - the
+     * project's ONE copy of @noble, which the kit no longer installs a second
+     * of (audit #2).
      *
-     * That fallback is only harmless while the two are the same build. If the
-     * app ever vendors a different @noble, every test below would keep passing
-     * while silently testing this kit against itself.
+     * That fallback is only harmless while the two are the same build. When
+     * they differ it is the WEB APP that is behind: the library's copy is the
+     * one every client is meant to run, and the web app drops its own when it
+     * moves onto the library (Path W). Until then the tests below would be
+     * the library checking itself, so this names the web app, not the kit.
      */
     for (const { name, vendored, ours } of webenv.vendoredVersions()) {
-      log(`${name}: vendored ${vendored}, installed ${ours}`);
+      log(`${name}: web app vendors ${vendored}, node-onlykey-lib ${ours}`);
       assert.ok(vendored, `${name} is not vendored in the web app`);
       assert.equal(ours, vendored,
-        `${name} differs between the web app and this kit - the parity below ` +
-        'would be this kit checking itself');
+        `${name}: the web app vendors ${vendored}, node-onlykey-lib (the one copy) has ` +
+        `${ours} - the WEB APP is behind the library; the parity below would be the ` +
+        'library checking itself until the web app runs the library copy');
     }
   });
 

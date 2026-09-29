@@ -95,7 +95,7 @@ describe('composite operations over the WebAuthn tunnel, through node-onlykey-li
       });
       blob = Buffer.from(generated.blob);
 
-      const { ed25519, x25519 } = require('@noble/curves/ed25519.js');
+      const { ed25519, x25519 } = require('node-onlykey-lib/vendor/@noble/curves/ed25519.js');
       ed25519Pub = Buffer.from(ed25519.getPublicKey(blob.subarray(0, 32)));
       x25519Sk = Buffer.from(blob.subarray(64, 96));
       assert.equal(x25519.getPublicKey(x25519Sk).length, 32);
@@ -131,13 +131,13 @@ describe('composite operations over the WebAuthn tunnel, through node-onlykey-li
         { confirm: press.confirm }));
       log(`library got ${sig.length} bytes`);
       assert.equal(sig.length, 64, 'an Ed25519 signature is 64 bytes');
-      const { ed25519 } = require('@noble/curves/ed25519.js');
+      const { ed25519 } = require('node-onlykey-lib/vendor/@noble/curves/ed25519.js');
       assert.ok(ed25519.verify(sig, digest, ed25519Pub),
         'the signature does not verify against the loaded key');
     });
 
   it('decrypts with the X25519 half', async ({ device, assert, signal }) => {
-    const { x25519 } = require('@noble/curves/ed25519.js');
+    const { x25519 } = require('node-onlykey-lib/vendor/@noble/curves/ed25519.js');
     const ephemeralSk = x25519.utils.randomSecretKey();
     const ephemeralPub = x25519.getPublicKey(ephemeralSk);
     const expected = Buffer.from(x25519.getSharedSecret(ephemeralSk, x25519.getPublicKey(x25519Sk)));
@@ -152,7 +152,7 @@ describe('composite operations over the WebAuthn tunnel, through node-onlykey-li
 
   it('decrypts with the ML-KEM-768 half - 1088 bytes, several sealed chunks',
     async ({ device, assert, signal }) => {
-      const { ml_kem768 } = require('@noble/post-quantum/ml-kem.js');
+      const { ml_kem768 } = require('node-onlykey-lib/vendor/@noble/post-quantum/ml-kem.js');
       const { composite } = require('node-onlykey-lib/crypto');
       const { mlkemSeed } = composite.unpackBlob(blob);
       const { publicKey } = ml_kem768.keygen(Uint8Array.from(mlkemSeed));
