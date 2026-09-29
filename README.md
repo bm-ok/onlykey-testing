@@ -298,7 +298,7 @@ stated reason** instead of reporting a pile of crashes.
 
 Everything here was learned by driving `OnlyKey-App` against the emulated
 device, and none of it is guessable from its source. **It is a different
-codebase from section 3** - that one is `onlykey.github.io` in a browser over
+codebase from section 3** - that one is `apps.onlykey.io` (the web app) in a browser over
 the WebAuthn tunnel; this is a packaged nw.js app reaching the device with
 `chrome.hid`. `lib/app.js` is its session, `lib/gui.js` is section 3's, and they
 share only the process plumbing.
@@ -735,12 +735,12 @@ Four limits of snapshot restore, none of them bugs:
 test/00-sanity/     built    no device at all - the kit's own oracles
 test/01-protocol/   built    Node over the wire protocols
 test/02-cli/        built    the CLI through the Python venv
-test/03-gui/        built    the WEB app (onlykey.github.io): 00-09 headless, 10+ in nw.js
+test/03-gui/        built    the WEB app (apps.onlykey.io): 00-09 headless, 10+ in nw.js
 test/04-app/        built    the OnlyKey APP (OnlyKey-App), a packaged nw.js app
 ```
 
 **Sections 3 and 4 are different codebases, and both get called "the app".**
-Section 3 is `onlykey.github.io`, served by express and opened in the kit's own
+Section 3 is `apps.onlykey.io` (web app 4.0.0 on node-onlykey-lib), served by express and opened in the kit's own
 nw.js, reaching the device over the WebAuthn tunnel. Section 4 is
 `OnlyKey-App`, a packaged Chrome-App-style nw.js application that reaches the
 device with `chrome.hid`. `lib/gui.js` drives the first and `lib/app.js` the
