@@ -331,7 +331,7 @@ describe('the web app\'s age container against the real age binary', {
         const out = path.join(dir, 'opened.txt');
         const dec = await withoutPress(device, () => cli.run('age',
           ['-d', '-i', path.join(dir, 'identity.txt'), '-o', out, sealed],
-          { timeoutMs: 90000, signal, env: { PATH: `${cli.VENV_BIN}:${process.env.PATH}` } }),
+          { timeoutMs: 90000, signal, env: cli.venvPathEnv() }),
         { signal });
 
         assert.equal(dec.code, 0,

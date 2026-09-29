@@ -98,7 +98,7 @@ const identityHash = () => crypto.createHash('sha256').update(IDENTITY_STRING, '
  * touching the device. It is also why the resulting homedir is only as portable
  * as the venv it was created against.
  */
-const VENV_PATH = { PATH: `${cli.VENV_BIN}:${process.env.PATH}` };
+const VENV_PATH = cli.venvPathEnv();
 
 /**
  * Walk OpenPGP packets. RFC 4880 §4.2, both header formats.

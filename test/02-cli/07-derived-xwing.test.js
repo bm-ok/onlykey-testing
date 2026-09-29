@@ -227,7 +227,7 @@ describe('derived X-Wing from the command line', {
 
       const result = await withoutPress(device, assert, () => cli.run('age',
         ['-d', '-i', at('identity.txt'), '-o', at('decrypted.txt'), at('secret.age')],
-        { timeoutMs: 90000, signal, env: { PATH: `${cli.VENV_BIN}:${process.env.PATH}` } }),
+        { timeoutMs: 90000, signal, env: cli.venvPathEnv() }),
       { signal });
 
       assert.equal(result.code, 0, `age -d exited ${result.code}: ${result.stderr}`);
@@ -260,7 +260,7 @@ describe('derived X-Wing from the command line', {
        * decapsulate and not a confirmation nobody gave timing out. */
       const result = await withoutPress(device, assert, () => cli.run('age',
         ['-d', '-i', at('other-identity.txt'), '-o', at('nope.txt'), at('secret.age')],
-        { timeoutMs: 90000, signal, env: { PATH: `${cli.VENV_BIN}:${process.env.PATH}` } }),
+        { timeoutMs: 90000, signal, env: cli.venvPathEnv() }),
       { signal });
 
       assert.notEqual(result.code, 0, `age decrypted with ${OTHER}'s identity`);

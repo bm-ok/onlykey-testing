@@ -207,7 +207,7 @@ describe('onlykey-agent derived-v2 (opt-in HKDF derivation)', {
       const before = (device.log.text.match(/Agent derivation v2 private key/g) || []).length;
       const init = await pqc.confirmFromConsole(device, () => cli.run('onlykey-gpg',
         ['init', 'OKT v2 <okt-v2@example.com>', '--homedir', homedir, '--skey', 'derived-v2', '--dkey', 'derived-v2'],
-        { timeoutMs: 240000, signal, env: { PATH: `${cli.VENV_BIN}:${process.env.PATH}` } }), { signal });
+        { timeoutMs: 240000, signal, env: cli.venvPathEnv() }), { signal });
       log(`onlykey-gpg init exited ${init.code}`);
       assert.equal(init.code, 0, `init failed: ${init.stderr.slice(-1500) || init.stdout.slice(-1500)}`);
       const script = fs.readFileSync(path.join(homedir, 'run-agent.sh'), 'utf8');
