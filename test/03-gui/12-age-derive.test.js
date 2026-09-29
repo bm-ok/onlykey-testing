@@ -34,7 +34,13 @@ const webenv = require('../../lib/webenv');
 const session = require('../../lib/gui-session-holder');
 
 const RP_ID = 'localhost';
-const PAGE = `http://${RP_ID}:3000/app/age-derive`;
+/*
+ * TWO PAGES since web app 4.0.0: the old single age-derive page became the AGE
+ * mode of Encrypt (/app/age-encrypt) and of Decrypt (/app/age-decrypt), and
+ * /app/age-derive is gone. Each has its own label field; the ids are unchanged.
+ */
+const PAGE = `http://${RP_ID}:3000/app/age-encrypt`;
+const PAGE_DECRYPT = `http://${RP_ID}:3000/app/age-decrypt`;
 
 const FIELD_DERIVED_KEY_MODE = 21;
 /*
@@ -111,8 +117,7 @@ describe('the age-derive page', {
     await page.waitFor('!!document.querySelector("#encrypt_start")', { timeoutMs: 60000 });
     log(`opened ${await page.eval('location.href')}`);
 
-    for (const id of ['label', 'plaintext', 'age_file_out', 'identity_out',
-      'decrypt_file_in', 'decrypt_start', 'decrypted_out']) {
+    for (const id of ['label', 'plaintext', 'age_file_out', 'identity_out']) {
       assert.ok(await page.eval(`!!document.querySelector("#${id}")`), `no #${id}`);
     }
   });
@@ -165,8 +170,16 @@ describe('the age-derive page', {
       'the stanza does not carry a full 1120-byte X-Wing ciphertext');
   });
 
-  it('reads its own file back', async ({ assert }) => {
-    /* The page's own round trip, which is what a user would do. */
+  it('reads its own file back', async ({ assert, log }) => {
+    /*
+     * The page's own round trip, which is what a user would do - on the
+     * Decrypt page's AGE mode now, with the same label typed in again.
+     */
+    page.close();
+    page = await session.get().open(PAGE_DECRYPT, { timeoutMs: 60000 });
+    await page.waitFor('!!document.querySelector("#decrypt_start")', { timeoutMs: 60000 });
+    log(`opened ${await page.eval('location.href')}`);
+    await setVal('label', LABEL);
     page.console.length = 0;
 
     await setVal('decrypt_file_in', ageFileB64);
