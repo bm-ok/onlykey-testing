@@ -222,6 +222,9 @@ describe('onlykey-gpg, initialising a GnuPG identity', {
   const at = (name) => path.join(homedir, name);
 
   /** Every gpg invocation is against the throwaway homedir, never the user's. */
+  /* Asked once for the file: every test from init on needs a gpg lib-agent can
+   * run (on Windows: a native GnuPG, not Git's MSYS one - lib/cli.js). */
+  const GPG_WHY = cli.gpgUnusableWhy();
   const gpg = (argv, opts) => cli.runHost('gpg', ['--homedir', homedir, ...argv],
     { timeoutMs: 30000, ...opts });
 
@@ -232,7 +235,7 @@ describe('onlykey-gpg, initialising a GnuPG identity', {
       assert.ok(cli.binary('onlykey-gpg-agent'),
         'onlykey-gpg-agent is missing - run-agent.sh would name a binary that is not there');
 
-      if (!cli.hostBinaryPresent('gpg')) skip('no gpg on PATH');
+      { const why = cli.gpgUnusableWhy(); if (why) skip(why); }
 
       /*
        * lib-agent warns rather than fails on an old gpg, so a version below
@@ -264,7 +267,8 @@ describe('onlykey-gpg, initialising a GnuPG identity', {
   }
 
   it('initialises an identity, answering a challenge for each signature',
-    async ({ device, assert, signal, log }) => {
+    async ({ device, assert, signal, log, skip }) => {
+      if (GPG_WHY) skip(GPG_WHY);
       /*
        * Unlocked first, as everywhere else - lib-agent's connect() sets the
        * time and then insists on reading a version string back.
@@ -301,7 +305,8 @@ describe('onlykey-gpg, initialising a GnuPG identity', {
     });
 
   it('printed the digits the device was actually going to ask for',
-    async ({ device, assert, log }) => {
+    async ({ device, assert, log, skip }) => {
+      if (GPG_WHY) skip(GPG_WHY);
       /*
        * The two sides of the challenge are computed independently and never
        * compared by anything in normal use - lib-agent hashes the message it is
@@ -340,7 +345,8 @@ describe('onlykey-gpg, initialising a GnuPG identity', {
         'lib-agent and the device disagree about the challenge - the message did not arrive intact');
     });
 
-  it('wrote a homedir wired to the device', async ({ assert, log }) => {
+  it('wrote a homedir wired to the device', async ({ assert, log, skip }) => {
+    if (GPG_WHY) skip(GPG_WHY);
     /*
      * What makes this a HARDWARE identity rather than an ordinary one is two
      * files: run-agent.sh, which names the agent binary and the slots, and
@@ -373,7 +379,8 @@ describe('onlykey-gpg, initialising a GnuPG identity', {
     assert.equal(fs.statSync(at('run-agent.sh')).mode & 0o777, 0o700, 'run-agent.sh is not 700');
   });
 
-  it('imported the key into a keyring gpg can read', async ({ assert, signal, log }) => {
+  it('imported the key into a keyring gpg can read', async ({ assert, signal, log, skip }) => {
+    if (GPG_WHY) skip(GPG_WHY);
     const listed = await gpg(['--list-keys', '--with-colons', '--fingerprint'], { signal });
     assert.equal(listed.code, 0, `gpg --list-keys failed: ${listed.stderr}`);
 
@@ -400,7 +407,8 @@ describe('onlykey-gpg, initialising a GnuPG identity', {
   });
 
   it('holds the key this kit derives for the same identity',
-    async ({ device, assert, signal, log }) => {
+    async ({ device, assert, signal, log, skip }) => {
+      if (GPG_WHY) skip(GPG_WHY);
       /*
        * The three-way check, as in 08-lib-agent-ssh: lib-agent asked over
        * hidapi, gpg wrote down whatever it was told, and this asks the same
@@ -458,7 +466,8 @@ describe('onlykey-gpg, initialising a GnuPG identity', {
         'the signing and decryption keys are the same - the keytype byte is being ignored');
     });
 
-  it('leaves an agent running, and stops it', async ({ device, assert, signal, log }) => {
+  it('leaves an agent running, and stops it', async ({ device, assert, signal, log, skip }) => {
+    if (GPG_WHY) skip(GPG_WHY);
     /*
      * Visible cleanup rather than a hook, and the first half is an assertion
      * rather than a formality: `init` DOES leave a daemon behind, and that is
@@ -501,7 +510,8 @@ describe('onlykey-gpg, initialising a GnuPG identity', {
   });
 
   it('refuses to reuse a homedir, without touching the device',
-    async ({ device, assert, signal, log }) => {
+    async ({ device, assert, signal, log, skip }) => {
+      if (GPG_WHY) skip(GPG_WHY);
       /*
        * The trap this row was written around. run_init() exits 1 rather than
        * reusing or clearing an existing homedir, so a second attempt at the
@@ -529,9 +539,10 @@ describe('onlykey-gpg, initialising a GnuPG identity', {
         'the refused init reached the device before deciding it could not run');
     });
 
-  it('cleans up after itself', async ({ assert }) => {
+  it('cleans up after itself', async ({ assert, skip }) => {
     /* A failure above leaves the homedir behind on purpose - the keyring that
      * came out wrong is the evidence. */
+    if (!parent) skip('nothing to clean up - the first test skipped before creating a homedir');
     fs.rmSync(parent, { recursive: true, force: true });
     assert.ok(!fs.existsSync(parent), `${parent} is still there`);
   });

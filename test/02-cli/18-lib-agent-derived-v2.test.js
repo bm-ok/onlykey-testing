@@ -200,7 +200,8 @@ describe('onlykey-agent derived-v2 (opt-in HKDF derivation)', {
     assert.match(okmsg.text(reply), /Error invalid derived key slot/, 'OKDECRYPT 221 was not refused');
   });
 
-  it('onlykey-gpg init --skey/--dkey derived-v2 signs with code 221', async ({ device, assert, signal, log }) => {
+  it('onlykey-gpg init --skey/--dkey derived-v2 signs with code 221', async ({ device, assert, signal, log, skip }) => {
+    { const why = cli.gpgUnusableWhy(); if (why) skip(why); }
     const parent = fs.mkdtempSync(path.join(os.tmpdir(), 'okt-v2-gpg-'));
     const homedir = path.join(parent, 'gnupg');
     try {
@@ -223,6 +224,13 @@ describe('onlykey-agent derived-v2 (opt-in HKDF derivation)', {
 });
 
 function agentsFor(dir) {
+  /* Windows has no /proc: ask for the gpg-agent processes and their command lines. */
+  if (process.platform === 'win32') {
+    const out = require('child_process').spawnSync('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command',
+      "Get-CimInstance Win32_Process -Filter \"Name='gpg-agent.exe'\" | ForEach-Object { \"$($_.ProcessId)`t$($_.CommandLine)\" }"],
+      { encoding: 'utf8', timeout: 30000, windowsHide: true }).stdout || '';
+    return out.split(/\r?\n/).filter((l) => l.includes(dir)).map((l) => Number(l.split('\t')[0])).filter(Boolean);
+  }
   const pids = [];
   for (const entry of fs.readdirSync('/proc')) {
     if (!/^\d+$/.test(entry)) continue;
