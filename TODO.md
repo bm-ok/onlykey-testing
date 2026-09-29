@@ -2088,9 +2088,15 @@ Under nwjs-sdk-v0.71.1 - the line the App's own package.json pins
     OKT_NW_BINARY=/opt/ok/nw71/nwjs-sdk-v0.71.1-linux-x64/nw DISPLAY=:99 \
       node bin/okt.js run test/04-app/10-session.test.js ... test/04-app/19-stop.test.js
 
-TODO: make lib/gui.js findNw() prefer an SDK matching the App's pinned nw
-for section 4 (section 3 can stay on 0.114), and find out what 0.114 is
-waiting on - the App will have to move off 0.71 eventually.
+RESOLVED 2026-09-29 (bm-ok OnlyKey-App use-node-onlykey-lib 2fb2596). What 0.114
+waits on is the Chrome-app launch itself. With package.json `main: app.js`, the
+window is created by the background page (`chrome.app.window.create`), and it
+never finishes parsing, even for `<body>hi</body>`. `persistent: true` does not
+help (0/5 Linux, 0/3 Windows); `main: app.html` does. The App now pins nw
+0.114.0 and opens app.html directly, which it had to anyway: under 0.71.1
+(Node 19.3) node-onlykey-lib's ES-module @noble cannot be require()d. The kit
+matches the window as a `page` target (lib/app.js isTargetOfType). VM 04-app:
+29/0/0 on the kit's 0.114 SDK.
 
 ## FINDING: the first FIDO packet after unlock can be swallowed by vendor traffic (2026-09-23)
 
