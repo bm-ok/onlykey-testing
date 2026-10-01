@@ -74,7 +74,6 @@ const INTENTIONAL = {
   oneValue: 'setslot takes exactly one value (python stores the first word and says it worked)',
   settingsSlot: 'settings are written on slot 0 (python: slot 1; the firmware ignores it)',
   oneWay: 'one-way settings need --yes',
-  wipeslotLines: 'wipeslot prints 1 line (python 8; the device sends 10)',
   genkeyEcc: 'genkey takes ECC slots only (python sends genkey HMAC1 to slot 130)',
   ownVersion: 'version prints each program\'s own name and version',
   capsSource: 'capabilities come from the lib\'s version table (python asks for a report the firmware does not send)',
@@ -692,7 +691,7 @@ describe('CLI parity: onlykey-cli (python) against onlykey-js (node-onlykey-lib)
       s.done();
     });
 
-  it('`wipeslot`: the device wipes ten fields; python prints eight of them, onlykey-js one',
+  it('`wipeslot`: the device wipes ten fields; onlykey-js prints all ten, python as shipped eight',
     async ({ device, assert, signal, log, skip }) => {
       needBoth({ skip });
       const s = sheet(assert, log, 'wipeslot 2a');
@@ -734,8 +733,14 @@ describe('CLI parity: onlykey-cli (python) against onlykey-js (node-onlykey-lib)
           `printed ${n} lines ${short(pyLines.join(' / '))}, the device's acks were ${short(py.said.join(' / '))}`);
         if (n === 8) s.pythonBug('wipeslotEight');
       }
-      s.check(JS, js.out === js.said[0], `printed ${short(js.out)}, the device's first answer was ${short(js.said[0])}`);
-      s.intentional('wipeslotLines');
+      /*
+       * node-onlykey-lib 59ddcdb: wipeSlot collects every reply until the device
+       * is quiet, and the CLI prints each one - python-onlykey e6d261c's rule.
+       * It used to print only the first and leave nine on the bus.
+       */
+      const jsLines = js.out.split('\n').map((l) => l.replace(/\r$/, '')).filter((l) => l.trim() !== '');
+      s.check(JS, jsLines.join('\n') === js.said.join('\n'),
+        `printed ${short(jsLines.join(' / '))}, the device's acks were ${short(js.said.join(' / '))}`);
       s.done();
     });
 
