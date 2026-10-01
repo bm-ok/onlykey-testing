@@ -129,6 +129,22 @@ describe('onlykey-js keychain: gen, list, pub and derive against the real firmwa
     assert.equal(hexLine(two.stdout), hexLine(one.stdout), 'the same label derived two different keys');
   });
 
+  /*
+   * The label scheme runs over FIDO (CTAPHID). The desktop pipe opens the FIDO
+   * interface on first use (lib cli/transport-hid.js, 2026-10-01); before
+   * that, this command could not run from a desktop at all.
+   */
+  it('`keychain derive label p256 …` over FIDO gives the same public key twice', async ({ device, assert, signal, log, skip }) => {
+    needCli({ skip });
+    await device.ensureUnlocked(PINS.primary, { signal });
+    const one = await js(['keychain', 'derive', 'label', 'p256', 'keychain-kit.example'], signal);
+    const two = await js(['keychain', 'derive', 'label', 'p256', 'keychain-kit.example'], signal);
+    show(log, 'keychain derive label', one);
+    assert.equal(one.code, 0, `keychain derive label failed: ${one.stderr.trim()}`);
+    assert.ok(hexLine(one.stdout), 'keychain derive label printed no public key');
+    assert.equal(hexLine(two.stdout), hexLine(one.stdout), 'the same label derived two different keys');
+  });
+
   it('tidy: ECC7 wiped again', async ({ device, assert, signal, log, skip }) => {
     needCli({ skip });
     await device.ensureUnlocked(PINS.primary, { signal });
