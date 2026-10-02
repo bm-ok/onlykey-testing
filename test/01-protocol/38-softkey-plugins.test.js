@@ -29,9 +29,11 @@ function staged() {
     return {
       plugins: Array.isArray(built.plugins) ? built.plugins : [],
       dir: typeof built.pluginsDir === 'string' ? built.pluginsDir : null,
+      /* a DEBUG build: some plugin requests exist only there (config's OKSETCONFIG) */
+      debug: built.debug === true,
     };
   } catch (_) {
-    return { plugins: [], dir: null };
+    return { plugins: [], dir: null, debug: false };
   }
 }
 
@@ -53,7 +55,8 @@ const ctx = {
     ctap2: require('../../lib/device/ctap2'), tunnel: require('../../lib/device/tunnel'),
   },
 };
-const { plugins, dir } = staged();
+const { plugins, dir, debug } = staged();
+ctx.build = { debug };
 const sideLoaded = plugins
   .map((name) => ({ name, file: dir ? path.join(dir, name, 'tests', 'kit.test.js') : null }))
   .filter((p) => p.file && fs.existsSync(p.file));
