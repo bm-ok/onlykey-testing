@@ -47,15 +47,27 @@ const ctx = {
    * backup section rides on it), and pqc (readyForKeygen: config mode, for
    * loading the keys a plugin test signs or decrypts with)
    */
-  kit: { backup: require('../../lib/device/backup'), pqc: require('../../lib/pqc') },
+  kit: {
+    backup: require('../../lib/device/backup'), pqc: require('../../lib/pqc'),
+    /* the kit's CTAP2 layer and WebAuthn tunnel: a plugin proves what it REFUSES over CTAP (config) */
+    ctap2: require('../../lib/device/ctap2'), tunnel: require('../../lib/device/tunnel'),
+  },
 };
 const { plugins, dir } = staged();
 const sideLoaded = plugins
   .map((name) => ({ name, file: dir ? path.join(dir, name, 'tests', 'kit.test.js') : null }))
   .filter((p) => p.file && fs.existsSync(p.file));
 
-/* 5 minutes a test: a plugin test may drive a whole typed backup and restore */
-describe('soft-key firmware plugins on the emulator (side-loaded tests)', { state: 'initialized', timeoutMs: 300000 }, () => {
+/*
+ * 5 minutes a test: a plugin test may drive a whole typed backup and restore.
+ * `requires: ['emulated']` (owner, 2026-10-02): plugins are soft-key features, so
+ * their tests never run against a hard key. build.json says what the EMULATOR on
+ * disk stages, not what the kit is talking to - a hardware run with an Edge
+ * emulator build still on disk would otherwise send Edge's tests (a backup and a
+ * restore among them) to a hard key that has no Edge. A plugin a hard key may get
+ * one day (Edge, maybe; never OKGETCONFIG) gets its own hard-key gate then.
+ */
+describe('soft-key firmware plugins on the emulator (side-loaded tests)', { state: 'initialized', timeoutMs: 300000, requires: ['emulated'] }, () => {
   for (const p of sideLoaded) require(p.file)({ it }, ctx);
   if (!sideLoaded.length) {
     it('side-loaded plugin tests', async ({ skip }) => {
