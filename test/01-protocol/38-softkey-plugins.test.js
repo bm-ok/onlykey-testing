@@ -13,7 +13,7 @@
  * an emulator that has the plugin, and leave with the plugin's folder. Against
  * a base emulator the one test here skips and says why.
  *
- * A plugin test gets the kit through `ctx` (IFACE, okmsg, PINS, requireLib), never by a
+ * A plugin test gets the kit through `ctx` (IFACE, okmsg, PINS, requireLib, kit), never by a
  * relative path into this repo.
  */
 const fs = require('node:fs');
@@ -39,13 +39,19 @@ function staged() {
  * requireLib: the kit's OWN pinned node-onlykey-lib, by public subpath - a plugin's
  * test checks the firmware against the library the kit runs, never a copy of its own.
  */
-const ctx = { IFACE, okmsg, PINS, requireLib: (id) => require(id) };
+const ctx = {
+  IFACE, okmsg, PINS,
+  requireLib: (id) => require(id),
+  /* the kit's own helpers a plugin test may need (a plugin's backup section rides on the device backup) */
+  kit: { backup: require('../../lib/device/backup') },
+};
 const { plugins, dir } = staged();
 const sideLoaded = plugins
   .map((name) => ({ name, file: dir ? path.join(dir, name, 'tests', 'kit.test.js') : null }))
   .filter((p) => p.file && fs.existsSync(p.file));
 
-describe('soft-key firmware plugins on the emulator (side-loaded tests)', { state: 'initialized' }, () => {
+/* 5 minutes a test: a plugin test may drive a whole typed backup and restore */
+describe('soft-key firmware plugins on the emulator (side-loaded tests)', { state: 'initialized', timeoutMs: 300000 }, () => {
   for (const p of sideLoaded) require(p.file)({ it }, ctx);
   if (!sideLoaded.length) {
     it('side-loaded plugin tests', async ({ skip }) => {
