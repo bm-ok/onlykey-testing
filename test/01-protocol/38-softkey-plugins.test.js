@@ -1,19 +1,20 @@
 'use strict';
 /*
- * SOFT-KEY FIRMWARE PLUGINS on the emulator (owner, 2026-10-01: "a way for
- * these plugins to be tested with the node-onlykey-emulator, where
- * node-onlykey-emulator is not forced to use ok-rn").
+ * SOFT-KEY FIRMWARE PLUGINS on the emulator - their own tests, SIDE-LOADED.
  *
- * The emulator stages plugins only when built with
- *   OKEMU_PLUGINS=hello OKEMU_PLUGINS_DIR=<a plugins folder> npm run rebuild
- * and records them in emulator/.stage/build.json. This file ARMS ITSELF on
- * that record: against a base emulator every test skips and says why, so the
- * base run keeps measuring the firmware everyone has.
+ * Owner, 2026-10-01: experimental firmware features are plugins, each in its
+ * own folder WITH ITS TESTS; the emulator builds them without depending on
+ * ok-rn, and neither does this kit. node-onlykey-emulator, built with
+ *   OKEMU_PLUGINS=<names> [OKEMU_PLUGINS_DIR=<a plugins folder>]
+ * (its own emulator/plugins/ holds the hello demo)
+ * records in emulator/.stage/build.json which plugins it staged and the folder
+ * they came from. This file reads that and registers each plugin's
+ * <pluginsDir>/<name>/tests/kit.test.js - so a plugin's tests run only against
+ * an emulator that has the plugin, and leave with the plugin's folder. Against
+ * a base emulator the one test here skips and says why.
  *
- * hello is the smallest plugin (ok-rn/android/okemu/plugins/hello): one vendor
- * message, OKHELLO (0x7E, 0xFE on the wire), answered with a fixed sentence
- * while the key is unlocked. Raw frames, so the device's own words are the
- * evidence.
+ * A plugin test gets the kit through `ctx` (IFACE, okmsg, PINS), never by a
+ * relative path into this repo.
  */
 const fs = require('node:fs');
 const path = require('node:path');
@@ -22,41 +23,31 @@ const { IFACE, okmsg } = require('../../lib/device');
 const { PINS } = require('../../lib/config');
 const { emulatorRoot } = require('../../lib/paths');
 
-const OKHELLO = 0x80 | 0x7e;
-
-function stagedPlugins() {
+function staged() {
   try {
     const built = JSON.parse(fs.readFileSync(path.join(emulatorRoot().dir, '.stage', 'build.json'), 'utf8'));
-    return Array.isArray(built.plugins) ? built.plugins : [];
+    return {
+      plugins: Array.isArray(built.plugins) ? built.plugins : [],
+      dir: typeof built.pluginsDir === 'string' ? built.pluginsDir : null,
+    };
   } catch (_) {
-    return [];
+    return { plugins: [], dir: null };
   }
 }
 
-describe('soft-key firmware plugins on the emulator', { state: 'initialized' }, () => {
-  it('hello: OKHELLO is answered by the plugin while unlocked, and not while locked',
-    async ({ device, assert, signal, log, skip }) => {
-      const plugins = stagedPlugins();
-      log(`emulator build plugins: ${JSON.stringify(plugins)}`);
-      if (!plugins.includes('hello')) {
-        skip('this emulator was not built with the hello plugin (OKEMU_PLUGINS=hello OKEMU_PLUGINS_DIR=... npm run rebuild)');
-      }
-      await device.restart({ signal });
+const ctx = { IFACE, okmsg, PINS };
+const { plugins, dir } = staged();
+const sideLoaded = plugins
+  .map((name) => ({ name, file: dir ? path.join(dir, name, 'tests', 'kit.test.js') : null }))
+  .filter((p) => p.file && fs.existsSync(p.file));
 
-      /* locked: like every vendor message, nothing comes back */
-      const lockedSince = device.mark(IFACE.VENDOR);
-      device.sendVendor({ msg: OKHELLO, slot: 0 });
-      await device.sleep(1500, { signal });
-      const lockedSaid = device.reportsSince(IFACE.VENDOR, lockedSince)
-        .map((r) => okmsg.text(r).trim()).filter((t) => /HELLO/.test(t));
-      assert.equal(lockedSaid.length, 0, `a locked key answered OKHELLO: ${lockedSaid[0]}`);
-
-      await device.unlock(PINS.primary, { signal });
-      const since = device.mark(IFACE.VENDOR);
-      device.sendVendor({ msg: OKHELLO, slot: 0 });
-      const reply = await device.waitHid(IFACE.VENDOR, { since, match: /HELLO/, timeoutMs: 6000, signal });
-      const said = okmsg.text(reply).trim();
-      log(`the emulator said: ${JSON.stringify(said)}`);
-      assert.equal(said, 'HELLO from plugin hello');
+describe('soft-key firmware plugins on the emulator (side-loaded tests)', { state: 'initialized' }, () => {
+  for (const p of sideLoaded) require(p.file)({ it }, ctx);
+  if (!sideLoaded.length) {
+    it('side-loaded plugin tests', async ({ skip }) => {
+      skip(plugins.length
+        ? `the emulator stages ${plugins.join(', ')}, but no tests/kit.test.js was found under ${dir || '(no pluginsDir recorded)'}`
+        : 'this emulator was built without plugins (e.g. OKEMU_PLUGINS=hello npm run rebuild in the emulator)');
     });
+  }
 });
