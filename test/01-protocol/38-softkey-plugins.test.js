@@ -42,8 +42,12 @@ function staged() {
 const ctx = {
   IFACE, okmsg, PINS,
   requireLib: (id) => require(id),
-  /* the kit's own helpers a plugin test may need (a plugin's backup section rides on the device backup) */
-  kit: { backup: require('../../lib/device/backup') },
+  /*
+   * the kit's own helpers a plugin test may need: the device backup (a plugin's
+   * backup section rides on it), and pqc (readyForKeygen: config mode, for
+   * loading the keys a plugin test signs or decrypts with)
+   */
+  kit: { backup: require('../../lib/device/backup'), pqc: require('../../lib/pqc') },
 };
 const { plugins, dir } = staged();
 const sideLoaded = plugins
