@@ -13,7 +13,7 @@
  * an emulator that has the plugin, and leave with the plugin's folder. Against
  * a base emulator the one test here skips and says why.
  *
- * A plugin test gets the kit through `ctx` (IFACE, okmsg, PINS), never by a
+ * A plugin test gets the kit through `ctx` (IFACE, okmsg, PINS, requireLib), never by a
  * relative path into this repo.
  */
 const fs = require('node:fs');
@@ -35,7 +35,11 @@ function staged() {
   }
 }
 
-const ctx = { IFACE, okmsg, PINS };
+/*
+ * requireLib: the kit's OWN pinned node-onlykey-lib, by public subpath - a plugin's
+ * test checks the firmware against the library the kit runs, never a copy of its own.
+ */
+const ctx = { IFACE, okmsg, PINS, requireLib: (id) => require(id) };
 const { plugins, dir } = staged();
 const sideLoaded = plugins
   .map((name) => ({ name, file: dir ? path.join(dir, name, 'tests', 'kit.test.js') : null }))
