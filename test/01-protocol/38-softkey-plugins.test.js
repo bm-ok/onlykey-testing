@@ -44,6 +44,8 @@ function staged() {
 const ctx = {
   IFACE, okmsg, PINS,
   requireLib: (id) => require(id),
+  /* the same library's FILE path (a plugin test that hands a lib program to a child process, e.g. git's gpg.program) */
+  resolveLib: (id) => require.resolve(id),
   /*
    * the kit's own helpers a plugin test may need: the device backup (a plugin's
    * backup section rides on it), and pqc (readyForKeygen: config mode, for
@@ -51,6 +53,8 @@ const ctx = {
    */
   kit: {
     backup: require('../../lib/device/backup'), pqc: require('../../lib/pqc'),
+    /* the lib composed over the kit's emulator, in-process (lib/libstack.js) - for a plugin test that runs lib code against the firmware */
+    libstack: require('../../lib/libstack'),
     /* the kit's CTAP2 layer and WebAuthn tunnel: a plugin proves what it REFUSES over CTAP (config) */
     ctap2: require('../../lib/device/ctap2'), tunnel: require('../../lib/device/tunnel'),
   },
