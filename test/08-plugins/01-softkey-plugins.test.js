@@ -37,7 +37,7 @@ function staged() {
 }
 
 const { plugins, dir, debug } = staged();
-const ctx = pluginCtx({ debug });
+const ctx = pluginCtx({ debug, plugins });
 const sideLoaded = plugins
   .map((name) => ({ name, file: dir ? path.join(dir, name, 'tests', 'kit.test.js') : null }))
   .filter((p) => p.file && fs.existsSync(p.file));
